@@ -195,11 +195,9 @@ class Frame:
         @nb.njit(fastmath=True)
         def mesh_position_to_meshblock_id(x1_, x2_, x3_):
             frac1_, frac2_, frac3_ = mesh_position_to_fractional_position_root(x1_, x2_, x3_)
-            if frac1_ < 0 or frac1_ >= 1 or frac2_ < 0 or frac2_ >= 1 or frac3_ < 0 or frac3_ >= 1:
-                return -1
-            mb1_ = int(frac1_ * mbtable.shape[0])
-            mb2_ = int(frac2_ * mbtable.shape[1])
-            mb3_ = int(frac3_ * mbtable.shape[2])
+            mb1_ = min(max(0, int(frac1_ * mbtable.shape[0])), mbtable.shape[0]-1)
+            mb2_ = min(max(0, int(frac2_ * mbtable.shape[1])), mbtable.shape[1]-1)
+            mb3_ = min(max(0, int(frac3_ * mbtable.shape[2])), mbtable.shape[2]-1)
             return mbtable[mb1_, mb2_, mb3_]
         self.mesh_position_to_meshblock_id = mesh_position_to_meshblock_id
 
@@ -325,7 +323,7 @@ class Frame:
                     x1_ = x1_ + (x1maxrt - x1minrt)
                 else:
                     raise RuntimeError('Unrecognized boundary ix1 = ' + ix1)
-            if x1_ >= x1maxrt:
+            if x1_ > x1maxrt:
                 if ox1 == 'none' or ox1 == 'outflow':
                     pass
                 elif ox1 == 'reflecting':
@@ -349,7 +347,7 @@ class Frame:
                     x3_ = x3_ + dx3_
                 else:
                     raise RuntimeError('Unrecognized boundary ix2 = ' + ix2)
-            if x2_ >= x2maxrt:
+            if x2_ > x2maxrt:
                 if ox2 == 'none' or ox2 == 'outflow':
                     pass
                 elif ox2 == 'reflecting':
@@ -373,7 +371,7 @@ class Frame:
                     x3_ = x3_ + (x3maxrt - x3minrt)
                 else:
                     raise RuntimeError('Unrecognized boundary ix3 = ' + ix3)
-            if x3_ >= x3maxrt:
+            if x3_ > x3maxrt:
                 if ox3 == 'none' or ox3 == 'outflow':
                     pass
                 elif ox3 == 'reflecting':

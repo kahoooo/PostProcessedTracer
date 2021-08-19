@@ -7,7 +7,7 @@ import json
 
 def _convert_to_serializable(x):
     if isinstance(x, np.bytes_) or isinstance(x, bytes):
-        out_ = x.decode('ascii', 'replacec')
+        out_ = x.decode('ascii', 'replace')
     elif isinstance(x, np.int32):
         out_ = int(x)
     elif isinstance(x, np.float64):

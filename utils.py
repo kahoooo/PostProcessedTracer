@@ -152,3 +152,30 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
     par.gidxs[-dn:] = ptpos[-dn:]
     par.meshs[-dn:, 0], par.meshs[-dn:, 1], par.meshs[-dn:, 2] = \
         gidx2mesh(par.gidxs[-dn:, 0], par.gidxs[-dn:, 1], par.gidxs[-dn:, 2])
+
+
+def _convert_to_serializable(x):
+    if isinstance(x, np.bytes_) or isinstance(x, bytes):
+        out_ = x.decode('ascii', 'replace')
+    elif isinstance(x, np.int32):
+        out_ = int(x)
+    elif isinstance(x, np.float64):
+        out_ = float(x)
+    elif isinstance(x, np.ndarray):
+        out_ = _convert_to_serializable(x.tolist())
+    elif isinstance(x, list):
+        out_ = list(map(_convert_to_serializable, x))
+    elif isinstance(x, dict):
+        out_ = dict()
+        for key, value in x.items():
+            key = _convert_to_serializable(key)
+            value = _convert_to_serializable(value)
+            out_[key] = value
+    else:
+        out_ = x
+    return out_
+
+
+def serialize(x):
+    import json
+    return json.dumps(_convert_to_serializable(x))

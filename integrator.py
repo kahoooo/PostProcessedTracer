@@ -2,29 +2,7 @@ import numba as nb
 import numpy as np
 from frame import Frame
 from particles import Particles
-import json
-
-
-def _convert_to_serializable(x):
-    if isinstance(x, np.bytes_) or isinstance(x, bytes):
-        out_ = x.decode('ascii', 'replace')
-    elif isinstance(x, np.int32):
-        out_ = int(x)
-    elif isinstance(x, np.float64):
-        out_ = float(x)
-    elif isinstance(x, np.ndarray):
-        out_ = _convert_to_serializable(x.tolist())
-    elif isinstance(x, list):
-        out_ = list(map(_convert_to_serializable, x))
-    elif isinstance(x, dict):
-        out_ = dict()
-        for key, value in x.items():
-            key = _convert_to_serializable(key)
-            value = _convert_to_serializable(value)
-            out_[key] = value
-    else:
-        out_ = x
-    return out_
+from utils import serialize
 
 
 class Integrator:
@@ -46,7 +24,7 @@ class Integrator:
         for key in ['Time', 'NumCycles']:
             del h1[key], h2[key]
 
-        hash_key = json.dumps(_convert_to_serializable([h1, h2, np.sign(second.time - first.time)]))
+        hash_key = serialize([h1, h2, np.sign(second.time - first.time)])
         if hash_key not in self.compute:
             self.compute[hash_key] = self._make_compute_function(first, second)
         return self.compute[hash_key]

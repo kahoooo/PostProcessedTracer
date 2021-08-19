@@ -68,6 +68,7 @@ class Integrator:
         vel2 = np.stack([second.data[f'vel{d+1}'] for d in range(3)])
         newsize = compute(delta_t, vel1, vel2, par.pids, par.meshs)
         par.resize(newsize)
+        print(f'{newsize} particles remain in bound')
 
 
 class VanLeer2(Integrator):
@@ -82,6 +83,7 @@ class VanLeer2(Integrator):
         x3minrt, x3maxrt, _ = first.header['RootGridX3']
 
         vel2derv = first.velocity_to_derivatives
+        boundary = first.apply_boundaries
 
         # variables valid for first frame
         ngh1 = first.num_ghost
@@ -212,7 +214,7 @@ class VanLeer2(Integrator):
                             break
 
                     # apply boundary conditions to remaining particles
-                    x3_ = (x3_ + 2 * np.pi) % (2 * np.pi)
+                    x1_, x2_, x3_ = boundary(x1_, x2_, x3_)
 
                     # check if it is out-of-bound
                     if (x1_ < x1minrt or x1_ > x1maxrt

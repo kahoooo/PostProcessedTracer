@@ -5,7 +5,7 @@ from frame import Frame
 from particles import Particles
 
 
-def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8, seed=None):
+def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
     """
     Provided the frame and existing particles, generate a blue noise smaple in the unoccupied regions and append to
     the end of the array using (modified) Bridson's algorithm:
@@ -14,12 +14,8 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8, seed=None):
     :param frame: Frame object
     :param par: Particles object containing existing particles
     :param radius: minimum distance between particles
-    :param seed: seed for random number generation
     :return: None
     """
-
-    if seed is not None:
-        np.random.seed(seed)
 
     nx_root = frame.header['RootGridSize'].astype(np.int64)
     nx = frame.header['MeshBlockSize'].astype(np.int64)

@@ -28,6 +28,7 @@ class Frame:
     data: dict = field(compare=False, repr=False)
     num_ghost: int = field(compare=False, repr=False)
     num_dimension: int = field(compare=False, repr=False)
+    boundaries: tuple[tuple[str, str], tuple[str, str], tuple[str, str]] = field(compare=False, repr=False)
 
     mesh_position_to_fractional_position_root: Callable = field(compare=False, repr=False)
     mesh_position_to_fractional_position_meshblock: Callable = field(compare=False, repr=False)
@@ -37,9 +38,19 @@ class Frame:
     global_indices_to_mesh_position: Callable = field(compare=False, repr=False)
     velocity_to_derivatives: Callable = field(compare=False, repr=False)
     interpolate_cell_centered: Callable = field(compare=False, repr=False)
+    apply_boundaries: Callable = field(compare=False, repr=False)
 
-    def __init__(self, filename):
+    def __init__(self, filename, boundaries=None):
         self.filename = filename
+
+        if boundaries is None:
+            self.boundaries = (('none',) * 2, ) * 3
+        else:
+            try:
+                (ix1, ox1), (ix2, ox2), (ix3, ox3) = boundaries
+                self.boundaries = ((str(ix1), str(ox1)), (str(ix2), str(ox2)), (str(ix3), str(ox3)))
+            except ValueError:
+                raise ValueError('boundaries has to be in the form: ((ix1, ox1), (ix2, ox2), (ix3, ox3))')
 
         self._load_header()
         self.time = self.header['Time']
@@ -121,6 +132,8 @@ class Frame:
         coordinates = self.header['Coordinates']
         ndim = int(np.sum(nx_root > 1))
         self.num_dimension = ndim
+
+        (ix1, ox1), (ix2, ox2), (ix3, ox3) = self.boundaries
 
         # detect the number of ghost zone, assume the first meshblock has the logical location (0, 0, 0)
         ngh = np.searchsorted(x1v[0], x1minrt)
@@ -299,3 +312,75 @@ class Frame:
                 l3s_, l3e_ = 0, 1
             return (quantities_[..., mb_, l3s_:l3e_, l2s_:l2e_, l1s_:l1e_] * w_).sum(axis=-1).sum(axis=-1).sum(axis=-1)
         self.interpolate_cell_centered = interpolate_cell_centered
+
+        # given mesh position, return mesh position after applying boundary condition
+        @nb.njit(fastmath=True)
+        def apply_boundaries(x1_, x2_, x3_):
+            if x1_ < x1minrt:
+                if ix1 == 'none' or ix1 == 'outflow':
+                    pass
+                elif ix1 == 'reflecting':
+                    x1_ = 2 * x1minrt - x1_
+                elif ix1 == 'periodic':
+                    x1_ = x1_ + (x1maxrt - x1minrt)
+                else:
+                    raise RuntimeError('Unrecognized boundary ix1 = ' + ix1)
+            if x1_ >= x1maxrt:
+                if ox1 == 'none' or ox1 == 'outflow':
+                    pass
+                elif ox1 == 'reflecting':
+                    x1_ = 2 * x1maxrt - x1_
+                elif ox1 == 'periodic':
+                    x1_ = x1_ - (x1maxrt - x1minrt)
+                else:
+                    raise RuntimeError('Unrecognized boundary ox1 = ' + ox1)
+            if x2_ < x2minrt:
+                if ix2 == 'none' or ix2 == 'outflow':
+                    pass
+                elif ix2 == 'reflecting':
+                    x2_ = 2 * x2minrt - x2_
+                elif ix2 == 'periodic':
+                    x2_ = x2_ + (x2maxrt - x2minrt)
+                elif ix2 == 'polar':
+                    if x2minrt != 0.0:
+                        raise RuntimeError('ix2 = polar but x2min = ' + str(x2minrt) + ' != 0.0')
+                    x2_ = -x2_
+                    dx3_ = np.pi % (x3maxrt - x3minrt)
+                    x3_ = x3_ + dx3_
+                else:
+                    raise RuntimeError('Unrecognized boundary ix2 = ' + ix2)
+            if x2_ >= x2maxrt:
+                if ox2 == 'none' or ox2 == 'outflow':
+                    pass
+                elif ox2 == 'reflecting':
+                    x2_ = 2 * x2maxrt - x2_
+                elif ox2 == 'periodic':
+                    x2_ = x2_ - (x2maxrt - x2minrt)
+                elif ox2 == 'polar':
+                    if x2maxrt != np.pi:
+                        raise RuntimeError('ox2 = polar but x2max = ' + str(x2maxrt) + ' != pi')
+                    x2_ = x2maxrt - x2_
+                    dx3_ = np.pi % (x3maxrt - x3minrt)
+                    x3_ = x3_ + dx3_
+                else:
+                    raise RuntimeError('Unrecognized boundary ox2 = ' + ox2)
+            if x3_ < x3minrt:
+                if ix3 == 'none' or ix3 == 'outflow':
+                    pass
+                elif ix3 == 'reflecting':
+                    x3_ = 2 * x3minrt - x3_
+                elif ix3 == 'periodic':
+                    x3_ = x3_ + (x3maxrt - x3minrt)
+                else:
+                    raise RuntimeError('Unrecognized boundary ix3 = ' + ix3)
+            if x3_ >= x3maxrt:
+                if ox3 == 'none' or ox3 == 'outflow':
+                    pass
+                elif ox3 == 'reflecting':
+                    x3_ = 2 * x3maxrt - x3_
+                elif ox3 == 'periodic':
+                    x3_ = x3_ - (x3maxrt - x3minrt)
+                else:
+                    raise RuntimeError('Unrecognized boundary ox3 = ' + ox3)
+            return x1_, x2_, x3_
+        self.apply_boundaries = apply_boundaries

@@ -52,16 +52,23 @@ def main():
                         help='key frames when new particles is inserted')
     parser.add_argument('--backward', '-b', action='store_true',
                         help='integrate backward in time')
-    parser.add_argument('--seed', '-s', action='store', nargs=1, type=int,
+    parser.add_argument('--seed', '-s', action='store', type=int,
                         help='seed for random number generation')
     args = parser.parse_args()
 
-    if args.seed is not None:
-        np.random.seed(args.seed)
-
     # construct a sorted list of frames in the order of integration
-    frames = list(map(Frame, args.frames))
+    frames = [Frame(filename, boundaries=(('none', 'none'),
+                                          ('polar', 'reflecting'),
+                                          ('periodic', 'periodic'))) for filename in args.frames]
     frames.sort(reverse=args.backward)
+
+    # seed both numpy and numba with the same seed
+    if args.seed is not None:
+        @nb.njit
+        def seed_numba(seed):
+            np.random.seed(seed)
+        seed_numba(args.seed)
+        np.random.seed(args.seed)
 
     # particle positions in mesh coordinates, no particles initially
     par = Particles(0)
@@ -72,6 +79,7 @@ def main():
             print('Generating particles for', first.filename)
             poisson_disk_sampler(first, par, radius=0.8)
             # plot_particles(par)
+            print(f'{par.size} particles')
 
         if second is not None:
             print('Reading data...')
@@ -83,6 +91,7 @@ def main():
     frame = frames[-1]
     frame.load(['rho', 'vel1', 'vel2', 'vel3'])
     # plot_background(frame)
+
 
 if __name__ == '__main__':
     main()

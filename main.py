@@ -39,9 +39,7 @@ def plot_background(frame: Frame):
                        norm=colors.LogNorm(vmin=rho_vmin, vmax=rho_vmax), zorder=0, cmap='jet')
         plt.pcolormesh(xf[mb, 2:-2, 2:-2], -yf[mb, 2:-2, 2:-2], frame.data['vel1'][mb, 0, 2:-2, 2:-2].T,
                        norm=colors.Normalize(vmin=vel1_vmin, vmax=vel1_vmax), zorder=0, cmap='bwr')
-
     plt.gca().set_aspect(1)
-    plt.show()
 
 
 def main():
@@ -78,7 +76,6 @@ def main():
         if first.filename in args.keyframes:
             print('Generating particles for', first.filename)
             poisson_disk_sampler(first, par, radius=0.8)
-            # plot_particles(par)
             print(f'{par.size} particles')
 
         if second is not None:
@@ -90,7 +87,9 @@ def main():
 
     frame = frames[-1]
     frame.load(['rho', 'vel1', 'vel2', 'vel3'])
-    # plot_background(frame)
+    plot_background(frame)
+    plot_particles(par)
+    plt.show()
 
 
 if __name__ == '__main__':

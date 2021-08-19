@@ -170,6 +170,7 @@ class VanLeer2(Integrator):
 
                     # temporary variables
                     time_ = time_elapsed_[p_]
+                    dt_ = delta_t_ * 1e-6
                     x1_, x2_, x3_ = meshs_[p_]
 
                     while time_ < delta_t_:
@@ -185,10 +186,10 @@ class VanLeer2(Integrator):
                         dx1f_ = min(dx1f1[mb1_, int(lidx11_)], dx1f2[mb2_, int(lidx12_)])
                         dx2f_ = min(dx2f1[mb1_, int(lidx21_)], dx2f2[mb2_, int(lidx22_)])
                         dx3f_ = min(dx3f1[mb1_, int(lidx31_)], dx3f2[mb2_, int(lidx32_)])
-                        dt_ = min(cfl[0] * dx1f_ / abs(derv1_),
-                                  cfl[1] * dx2f_ / abs(derv2_),
-                                  cfl[2] * abs(dx3f_ / derv3_),
-                                  delta_t_ - time_)
+                        dt_ = min(cfl[0] * dx1f_ / (abs(derv1_) + 1e-10),
+                                  cfl[1] * dx2f_ / (abs(derv2_) + 1e-10),
+                                  cfl[2] * dx3f_ / (abs(derv3_) + 1e-10),
+                                  delta_t_ - time_, 2 * dt_)
 
                         # integrate half time step
                         time__ = time_ + 0.5 * dt_

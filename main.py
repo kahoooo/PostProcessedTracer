@@ -78,6 +78,10 @@ def main():
             poisson_disk_sampler(first, par, radius=0.8)
             print(f'{par.size} particles')
 
+        np.savez(first.filename + '.npz',
+                 frame=first.filename, time=first.time,
+                 pids=par.pids, meshs=par.meshs)
+
         if second is not None:
             print('Reading data...')
             first.load(['vel1', 'vel2', 'vel3'])

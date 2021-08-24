@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Tuple, Callable
 
 
 def _convert_type(x):
@@ -28,7 +28,7 @@ class Frame:
     data: dict = field(compare=False, repr=False)
     num_ghost: int = field(compare=False, repr=False)
     num_dimension: int = field(compare=False, repr=False)
-    boundaries: tuple[tuple[str, str], tuple[str, str], tuple[str, str]] = field(compare=False, repr=False)
+    boundaries: Tuple[Tuple[str, str], Tuple[str, str], Tuple[str, str]] = field(compare=False, repr=False)
 
     mesh_position_to_fractional_position_root: Callable = field(compare=False, repr=False)
     mesh_position_to_fractional_position_meshblock: Callable = field(compare=False, repr=False)

@@ -6,6 +6,8 @@ import numpy as np
 from matplotlib import colors
 import matplotlib.pyplot as plt
 
+from tqdm import tqdm
+
 from frame import Frame
 from particles import Particles
 from integrator import VanLeer2
@@ -55,9 +57,13 @@ def main():
     args = parser.parse_args()
 
     # construct a sorted list of frames in the order of integration
-    frames = [Frame(filename, boundaries=(('none', 'none'),
-                                          ('polar', 'reflecting'),
-                                          ('periodic', 'periodic'))) for filename in args.frames]
+    t = tqdm(args.frames, bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}')
+    frames = []
+    for filename in t:
+        t.set_description_str(f'Reading header from {filename}')
+        frames.append(Frame(filename, boundaries=(('none', 'none'),
+                                                  ('polar', 'reflecting'),
+                                                  ('periodic', 'periodic'))))
     frames.sort(reverse=args.backward)
 
     # seed both numpy and numba with the same seed
@@ -72,21 +78,23 @@ def main():
     par = Particles(0)
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
-    for first, second in it.zip_longest(frames, frames[1:]):
+    t = tqdm(it.zip_longest(frames, frames[1:]), total=len(frames),
+             bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}')
+    for first, second in t:
         if first.filename in args.keyframes:
-            print('Generating particles for', first.filename)
+            t.set_description_str(f'Generating particles for {first.filename}')
             poisson_disk_sampler(first, par, radius=0.8)
-            print(f'{par.size} particles')
 
         np.savez(first.filename + '.npz',
                  frame=first.filename, time=first.time,
                  pids=par.pids, meshs=par.meshs)
 
         if second is not None:
-            print('Reading data...')
+            t.set_description_str(f'Reading data from {first.filename}')
+            t.refresh()
             first.load(['vel1', 'vel2', 'vel3'])
             second.load(['vel1', 'vel2', 'vel3'])
-            integrator.integrate(first, second, par)
+            integrator.integrate(first, second, par, tqdm=t)
             first.unload()
 
     frame = frames[-1]

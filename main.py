@@ -17,11 +17,11 @@ import warnings
 warnings.filterwarnings("ignore", category=nb.NumbaExperimentalFeatureWarning)
 
 
-def plot_particles(par: Particles):
+def plot_particles(par: Particles, zorder=2):
     x = par.meshs[:, 0] * np.sin(par.meshs[:, 1])
     y = par.meshs[:, 0] * np.cos(par.meshs[:, 1])
-    plt.scatter(x, y, s=1)
-    plt.scatter(x, -y, s=1)
+    plt.scatter(x, y, s=1, zorder=zorder)
+    plt.scatter(x, -y, s=1, zorder=zorder)
 
 
 def plot_background(frame: Frame):
@@ -46,12 +46,16 @@ def plot_background(frame: Frame):
 
 def main():
     parser = argparse.ArgumentParser(description='Post-processed tracer particles')
-    parser.add_argument('frames', action='store', nargs='+', type=str,
+    parser.add_argument('--frames', action='store', nargs='+', type=str,
                         help='primitives variables in athdf format')
     parser.add_argument('--keyframes', '-k', action='store', nargs='*', type=str,
                         help='key frames when new particles is inserted')
     parser.add_argument('--backward', '-b', action='store_true',
                         help='integrate backward in time')
+    parser.add_argument('--sample_mass', action='store', type=float, default=0,
+                        help='minimum particle distance in mass-space')
+    parser.add_argument('--sample_space', action='store', type=float, default=0,
+                        help='minimum particle distance')
     parser.add_argument('--seed', '-s', action='store', type=int,
                         help='seed for random number generation')
     args = parser.parse_args()
@@ -74,16 +78,28 @@ def main():
         seed_numba(args.seed)
         np.random.seed(args.seed)
 
-    # particle positions in mesh coordinates, no particles initially
+    # particle positions in mesh coordinates, no particles initially, then sample weighted by mass
     par = Particles(0)
+    if args.sample_mass > 0:
+        ngh = frames[0].num_ghost
+        ndim = frames[0].num_dimension
+        slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh), ) * ndim
+        frames[0].load(['rho'])
+        rho = frames[0].data['rho']
+        dvol = frames[0].get_finite_volume()
+        mass_per_cell = (rho * dvol)[slc]
+        mindist = (args.sample_mass / mass_per_cell) ** (1 / ndim)
+        nsample = np.log(mass_per_cell.max() / mass_per_cell.sum()) / np.log(0.99)
+        poisson_disk_sampler(frames[0], par, mindist=mindist, seed=nsample)
+
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
     t = tqdm(it.zip_longest(frames, frames[1:]), total=len(frames),
              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}')
     for first, second in t:
-        if first.filename in args.keyframes:
+        if args.sample_space > 0 and first.filename in args.keyframes:
             t.set_description_str(f'Generating particles for {first.filename}')
-            poisson_disk_sampler(first, par, radius=0.8)
+            poisson_disk_sampler(first, par, radius=args.sample_space)
 
         np.savez(first.filename + '.npz',
                  frame=first.filename, time=first.time,

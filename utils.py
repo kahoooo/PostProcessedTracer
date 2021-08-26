@@ -5,7 +5,7 @@ from frame import Frame
 from particles import Particles
 
 
-def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
+def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None, seed=None):
     """
     Provided the frame and existing particles, generate a blue noise smaple in the unoccupied regions and append to
     the end of the array using (modified) Bridson's algorithm:
@@ -14,6 +14,8 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
     :param frame: Frame object
     :param par: Particles object containing existing particles
     :param radius: minimum distance between particles
+    :param mindist: minimum distance as an array, override radius if set
+    :param seed: number of initial sample to be put in
     :return: None
     """
 
@@ -26,6 +28,10 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
     maxlevel = np.int64(frame.header['MaxLevel'])
     levels = frame.header['Levels'].astype(np.int64)
     llocs = frame.header['LogicalLocations'].astype(np.int64)
+
+    if mindist is None:
+        mindist = np.empty([nmb] + nx.tolist(), dtype=np.float64)
+        mindist[...] = np.ldexp(radius, -levels[:, None, None, None])
 
     # set up hashtable for locating meshblock
     mbtable_shape = nx_root // nx
@@ -64,37 +70,27 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
             add_point(gidxs_[p_], pictable_, nxt_, ptpos_)
     hash_points(par.gidxs, pictable, nxt, ptpos)
 
-    # randomly select an initial sample if none exists
-    if len(ptpos) == 0:
-        newpos = np.random.rand(3) * nx_root
-        newpos[ndim:] = 0.0
-        add_point(newpos, pictable, nxt, ptpos)
-
-    # apply Bridson's algorithm
-    # randomly select k candidates adjacent to an active point
-    # reject if too close to other points or out of bound, otherwise, add to the active list
     @nb.njit
     def has_nearby(gidx_, pictable_, nxt_, ptpos_, radius_):
-        mblist_ = nb.typed.List()
-        offset_ = np.zeros(3, dtype=np.int64)
-        for iofs_ in [-1, 1]:
-            for jofs_ in [-1, 1] if ndim >= 2 else [0]:
-                for kofs_ in [-1, 1] if ndim >= 3 else [0]:
-                    offset_[0], offset_[1], offset_[2] = iofs_, jofs_, kofs_
-                    corner_ = gidx_ + offset_ * radius_
-                    lloc_ = (corner_ / nx_root * mbtable_shape).astype(np.int64)
-                    lloc_[0] = min(max(0, lloc_[0]), mbtable_shape[0] - 1)
-                    lloc_[1] = min(max(0, lloc_[1]), mbtable_shape[1] - 1)
-                    lloc_[2] = min(max(0, lloc_[2]), mbtable_shape[2] - 1)
-                    mb_ = mbtable[lloc_[0], lloc_[1], lloc_[2]]
-                    if mb_ not in mblist_:
-                        mblist_.append(mb_)
-        rsq_ = radius_ * radius_
         left_ = np.copy(gidx_)
-        left_[:ndim] -= radius
+        left_[:ndim] -= radius_
         right_ = np.copy(gidx_)
-        right_[:ndim] += radius
-        for mb_ in mblist_:
+        right_[:ndim] += radius_
+
+        left_lloc_ = (left_ / nx_root * mbtable_shape).astype(np.int64)
+        left_lloc_[0] = min(max(0, left_lloc_[0]), mbtable_shape[0] - 1)
+        left_lloc_[1] = min(max(0, left_lloc_[1]), mbtable_shape[1] - 1)
+        left_lloc_[2] = min(max(0, left_lloc_[2]), mbtable_shape[2] - 1)
+
+        right_lloc_ = (right_ / nx_root * mbtable_shape).astype(np.int64)
+        right_lloc_[0] = min(max(0, right_lloc_[0]), mbtable_shape[0] - 1)
+        right_lloc_[1] = min(max(0, right_lloc_[1]), mbtable_shape[1] - 1)
+        right_lloc_[2] = min(max(0, right_lloc_[2]), mbtable_shape[2] - 1)
+
+        rsq_ = radius_ * radius_
+        for mb_ in np.unique(mbtable[left_lloc_[0]:right_lloc_[0] + 1,
+                                     left_lloc_[1]:right_lloc_[1] + 1,
+                                     left_lloc_[2]:right_lloc_[2] + 1]):
             lidx_left_ = np.ldexp(left_ - np.ldexp(llocs[mb_] * nx, -maxlevel), levels[mb_]).astype(np.int64)
             lidx_left_[0] = min(max(0, lidx_left_[0]), nx[0] - 1)
             lidx_left_[1] = min(max(0, lidx_left_[1]), nx[1] - 1)
@@ -113,13 +109,55 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=0.8):
                             p_ = nxt_[p_]
         return False
 
+    # randomly select initial samples
+    if seed is None:
+        seed = 1 if len(ptpos) == 0 else 0
+
     @nb.njit
-    def modified_bridson(pictable_, nxt_, ptpos_, radius_=radius, k=16):
+    def pure_random(pictable_, nxt_, ptpos_):
+        if seed == 0:
+            return
+        cumweight_ = np.cumsum(mindist ** -ndim)
+        cumweight_ /= cumweight_[-1]
+        indices_ = np.searchsorted(cumweight_, np.random.rand(seed))
+        strides = np.cumprod(np.array(mindist.shape[::-1]))
+        mbs_ = indices_ // strides[2]
+        indices_ -= mbs_ * strides[2]
+        ks_ = indices_ // strides[1]
+        indices_ -= ks_ * strides[1]
+        js_ = indices_ // strides[0]
+        indices_ -= js_ * strides[0]
+        is_ = indices_
+        for mb_, k_, j_, i_ in zip(mbs_, ks_, js_, is_):
+            newpos_ = np.ldexp((llocs[mb_] << maxlevel) / mbtable_shape * nx_root + np.array([i_, j_, k_]), -levels[mb_])
+            newpos_[ndim:] = 0.0
+            lloc_ = (newpos_ / nx_root * mbtable_shape).astype(np.int64)
+            mb_ = mbtable[lloc_[0], lloc_[1], lloc_[2]]
+            lidx_ = np.ldexp(newpos_ - np.ldexp(llocs[mb_] * nx, -maxlevel), levels[mb_]).astype(np.int64)
+            lidx_[0] = min(max(0, lidx_[0]), nx[0] - 1)
+            lidx_[1] = min(max(0, lidx_[1]), nx[1] - 1)
+            lidx_[2] = min(max(0, lidx_[2]), nx[2] - 1)
+            rmin_ = mindist[mb_, lidx_[2], lidx_[1], lidx_[0]]
+            if (np.any(newpos_ < 0) or np.any(newpos_ > nx_root)
+                    or has_nearby(newpos_, pictable_, nxt_, ptpos_, rmin_)):
+                continue
+            add_point(newpos_, pictable_, nxt_, ptpos_)
+    pure_random(pictable, nxt, ptpos)
+
+    # apply Bridson's algorithm
+    # randomly select k candidates adjacent to an active point
+    # reject if too close to other points or out of bound, otherwise, add to the active list
+    @nb.njit
+    def modified_bridson(pictable_, nxt_, ptpos_, k=16):
         active_ = 0
         while active_ < len(ptpos_):
             lloc_ = (ptpos_[active_] / nx_root * mbtable_shape).astype(np.int64)
             mb_ = mbtable[lloc_[0], lloc_[1], lloc_[2]]
-            rmin_ = np.ldexp(radius_, -levels[mb_])
+            lidx_ = np.ldexp(ptpos_[active_] - np.ldexp(llocs[mb_] * nx, -maxlevel), levels[mb_]).astype(np.int64)
+            lidx_[0] = min(max(0, lidx_[0]), nx[0] - 1)
+            lidx_[1] = min(max(0, lidx_[1]), nx[1] - 1)
+            lidx_[2] = min(max(0, lidx_[2]), nx[2] - 1)
+            rmin_ = mindist[mb_, lidx_[2], lidx_[1], lidx_[0]]
             for i in range(k):
                 newpos_ = np.copy(ptpos_[active_])
                 if ndim == 2:

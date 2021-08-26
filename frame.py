@@ -39,6 +39,7 @@ class Frame:
     velocity_to_derivatives: Callable = field(compare=False, repr=False)
     interpolate_cell_centered: Callable = field(compare=False, repr=False)
     apply_boundaries: Callable = field(compare=False, repr=False)
+    get_finite_volume: Callable = field(compare=False, repr=False)
 
     def __init__(self, filename, boundaries=None):
         self.filename = filename
@@ -382,3 +383,23 @@ class Frame:
                     raise RuntimeError('Unrecognized boundary ox3 = ' + ox3)
             return x1_, x2_, x3_
         self.apply_boundaries = apply_boundaries
+
+        # return finite volume
+        def get_finite_volume():
+            if coordinates == 'cartesian':
+                dx1 = np.diff(self.header['x1f'], axis=-1)
+                dx2 = np.diff(self.header['x2f'], axis=-1)
+                dx3 = np.diff(self.header['x3f'], axis=-1)
+            elif coordinates == 'cylindrical':
+                dx1 = np.diff(self.header['x1f'] ** 2 / 2, axis=-1)
+                dx2 = np.diff(self.header['x2f'], axis=-1)
+                dx3 = np.diff(self.header['x3f'], axis=-1)
+            elif coordinates == 'spherical_polar':
+                dx1 = np.diff(self.header['x1f'] ** 3 / 3, axis=-1)
+                dx2 = np.diff(-np.cos(self.header['x2f']), axis=-1)
+                dx3 = np.diff(self.header['x3f'], axis=-1)
+            else:
+                raise RuntimeError('Unrecognized coordinates: ' + coordinates)
+            dvol = dx1[:, None, None, :] * dx2[:, None, :, None] * dx3[:, :, None, None]
+            return dvol
+        self.get_finite_volume = get_finite_volume

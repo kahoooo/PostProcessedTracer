@@ -132,8 +132,9 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
         indices_ -= js_ * strides[0]
         is_ = indices_
         for mb_, k_, j_, i_ in zip(mbs_, ks_, js_, is_):
-            newpos_ = np.ldexp((llocs[mb_] << maxlevel) / mbtable_shape * nx_root + np.array([i_, j_, k_]),
-                               -levels[mb_])
+            newpos_ = np.ldexp(
+                (llocs[mb_] << maxlevel) / mbtable_shape * nx_root + np.array([i_, j_, k_]) + (np.random.rand(3) - 0.5),
+                -levels[mb_])
             newpos_[ndim:] = 0.0
             lloc_ = (newpos_ / nx_root * mbtable_shape).astype(np.int64)
             mb_ = mbtable[lloc_[0], lloc_[1], lloc_[2]]

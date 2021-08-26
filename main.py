@@ -97,7 +97,7 @@ def main():
 
     observations = np.zeros(len(frames) + 1, dtype=int)
     with tqdm(smoothing=0.1,
-              bar_format='{percentage:3.0f}%|{bar}| [{elapsed}<{remaining}] {desc}') as pbar:
+              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as pbar:
         for i, (first, second) in enumerate(it.zip_longest(frames, frames[1:])):
             if args.sample_space > 0 and first.filename in args.keyframes:
                 pbar.set_description_str(f'Generating particles for {first.filename}')
@@ -118,7 +118,7 @@ def main():
             if i != len(frames) - 1:
                 x = np.arange(1, i + 2)
                 y = observations[1:i + 2]
-                fitted = np.poly1d(np.polyfit(x, y / x, min(2, i)).tolist() + [0])
+                fitted = np.poly1d(np.polyfit(x, y, min(3, i)))
                 factor = np.max(y / fitted(x))
                 pbar.total = int(fitted(len(frames)) * factor)
             else:

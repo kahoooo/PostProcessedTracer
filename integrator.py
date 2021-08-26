@@ -30,7 +30,7 @@ class Integrator:
             self.compute[hash_key] = self._make_compute_function(first, second)
         return self.compute[hash_key]
 
-    def integrate(self, first: Frame, second: Frame, par: Particles, tqdm=None):
+    def integrate(self, first: Frame, second: Frame, par: Particles, pbar):
         if (np.any(first.header['RootGridX1'][:2] != second.header['RootGridX1'][:2])
                 or np.any(first.header['RootGridX2'][:2] != second.header['RootGridX2'][:2])
                 or np.any(first.header['RootGridX3'][:2] != second.header['RootGridX3'][:2])):
@@ -40,8 +40,8 @@ class Integrator:
             return
         delta_t = abs(second.time - first.time)
 
-        if tqdm is not None:
-            tqdm.set_description_str(f'Integrating from {first.filename} to {second.filename}')
+        if pbar is not None:
+            pbar.set_description_str(f'Integrating from {first.filename} to {second.filename}')
         compute = self.get_compute_function(first, second)
 
         vel1 = np.stack([first.data[f'vel{d + 1}'] for d in range(3)])

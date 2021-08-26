@@ -60,14 +60,15 @@ def main():
     args = parser.parse_args()
 
     # construct a sorted list of frames in the order of integration
-    t = tqdm(args.frames, bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}')
-    frames = []
-    for filename in t:
-        t.set_description_str(f'Reading header from {filename}')
-        frames.append(Frame(filename, boundaries=(('none', 'none'),
-                                                  ('polar', 'reflecting'),
-                                                  ('periodic', 'periodic'))))
-    frames.sort(reverse=args.backward)
+    with tqdm(args.frames, smoothing=1.0,
+              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as t:
+        frames = []
+        for filename in t:
+            t.set_description_str(f'Reading header from {filename}')
+            frames.append(Frame(filename, boundaries=(('none', 'none'),
+                                                      ('polar', 'reflecting'),
+                                                      ('periodic', 'periodic'))))
+        frames.sort(reverse=args.backward)
 
     # seed both numpy and numba with the same seed
     if args.seed is not None:
@@ -94,24 +95,35 @@ def main():
 
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
-    t = tqdm(it.zip_longest(frames, frames[1:]), total=len(frames),
-             bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}')
-    for first, second in t:
-        if args.sample_space > 0 and first.filename in args.keyframes:
-            t.set_description_str(f'Generating particles for {first.filename}')
-            poisson_disk_sampler(first, par, radius=args.sample_space)
+    observations = np.zeros(len(frames) + 1, dtype=int)
+    with tqdm(smoothing=0.0,
+              bar_format='{percentage:3.0f}%|{bar}| [{elapsed}<{remaining}] {desc}') as pbar:
+        for i, (first, second) in enumerate(it.zip_longest(frames, frames[1:])):
+            if args.sample_space > 0 and first.filename in args.keyframes:
+                pbar.set_description_str(f'Generating particles for {first.filename}')
+                poisson_disk_sampler(first, par, radius=args.sample_space)
 
-        np.savez(first.filename + '.npz',
-                 frame=first.filename, time=first.time,
-                 pids=par.pids, meshs=par.meshs)
+            np.savez(first.filename + '.npz',
+                     frame=first.filename, time=first.time,
+                     pids=par.pids, meshs=par.meshs)
 
-        if second is not None:
-            t.set_description_str(f'Reading data from {first.filename}')
-            t.refresh()
-            first.load(['vel1', 'vel2', 'vel3'])
-            second.load(['vel1', 'vel2', 'vel3'])
-            integrator.integrate(first, second, par, tqdm=t)
-            first.unload()
+            if second is not None:
+                t.set_description_str(f'Reading data from {first.filename}')
+                first.load(['vel1', 'vel2', 'vel3'])
+                second.load(['vel1', 'vel2', 'vel3'])
+                integrator.integrate(first, second, par, pbar=pbar)
+                first.unload()
+
+            observations[i + 1] = observations[i] + par.size
+            if i != len(frames) - 1:
+                x = np.arange(1, i + 2)
+                y = observations[1:i + 2]
+                fitted = np.poly1d(np.polyfit(x, y / x, min(2, i)).tolist() + [0])
+                factor = np.max(y / fitted(x))
+                pbar.total = int(fitted(len(frames)) * factor)
+            else:
+                pbar.total = observations[-1]
+            pbar.update(par.size)
 
     frame = frames[-1]
     frame.load(['rho', 'vel1', 'vel2', 'vel3'])

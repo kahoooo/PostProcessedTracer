@@ -1,6 +1,8 @@
+import itertools as it
+
 import numba as nb
 import numpy as np
-import itertools as it
+
 from frame import Frame
 from particles import Particles
 
@@ -68,6 +70,7 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
     def hash_points(gidxs_, pictable_, nxt_, ptpos_):
         for p_ in range(gidxs_.shape[0]):
             add_point(gidxs_[p_], pictable_, nxt_, ptpos_)
+
     hash_points(par.gidxs, pictable, nxt, ptpos)
 
     @nb.njit
@@ -89,8 +92,8 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
 
         rsq_ = radius_ * radius_
         for mb_ in np.unique(mbtable[left_lloc_[0]:right_lloc_[0] + 1,
-                                     left_lloc_[1]:right_lloc_[1] + 1,
-                                     left_lloc_[2]:right_lloc_[2] + 1]):
+                             left_lloc_[1]:right_lloc_[1] + 1,
+                             left_lloc_[2]:right_lloc_[2] + 1]):
             lidx_left_ = np.ldexp(left_ - np.ldexp(llocs[mb_] * nx, -maxlevel), levels[mb_]).astype(np.int64)
             lidx_left_[0] = min(max(0, lidx_left_[0]), nx[0] - 1)
             lidx_left_[1] = min(max(0, lidx_left_[1]), nx[1] - 1)
@@ -129,7 +132,8 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
         indices_ -= js_ * strides[0]
         is_ = indices_
         for mb_, k_, j_, i_ in zip(mbs_, ks_, js_, is_):
-            newpos_ = np.ldexp((llocs[mb_] << maxlevel) / mbtable_shape * nx_root + np.array([i_, j_, k_]), -levels[mb_])
+            newpos_ = np.ldexp((llocs[mb_] << maxlevel) / mbtable_shape * nx_root + np.array([i_, j_, k_]),
+                               -levels[mb_])
             newpos_[ndim:] = 0.0
             lloc_ = (newpos_ / nx_root * mbtable_shape).astype(np.int64)
             mb_ = mbtable[lloc_[0], lloc_[1], lloc_[2]]
@@ -142,6 +146,7 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
                     or has_nearby(newpos_, pictable_, nxt_, ptpos_, rmin_)):
                 continue
             add_point(newpos_, pictable_, nxt_, ptpos_)
+
     pure_random(pictable, nxt, ptpos)
 
     # apply Bridson's algorithm
@@ -180,6 +185,7 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
                     continue
                 add_point(newpos_, pictable_, nxt_, ptpos_)
             active_ += 1
+
     modified_bridson(pictable, nxt, ptpos)
 
     # resize, append and convert back to physical coordinate

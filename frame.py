@@ -1,7 +1,8 @@
-import numba as nb
-import numpy as np
 from dataclasses import dataclass, field
 from typing import Tuple, Callable
+
+import numba as nb
+import numpy as np
 
 
 def _convert_type(x):
@@ -45,7 +46,7 @@ class Frame:
         self.filename = filename
 
         if boundaries is None:
-            self.boundaries = (('none',) * 2, ) * 3
+            self.boundaries = (('none',) * 2,) * 3
         else:
             try:
                 (ix1, ox1), (ix2, ox2), (ix3, ox3) = boundaries
@@ -168,6 +169,7 @@ class Frame:
             else:
                 frac3_ = np.log2(1 - (x3_ - x3minrt) / (x3maxrt - x3minrt) * (1 - x3ratnxrt)) / np.log2(x3ratnxrt)
             return frac1_, frac2_, frac3_
+
         self.mesh_position_to_fractional_position_root = mesh_position_to_fractional_position_root
 
         # given mesh position, return fractional position in meshblock
@@ -190,16 +192,18 @@ class Frame:
             else:
                 frac3_ = np.log2(1 - (x3_ - x3min_) / (x3max_ - x3min_) * (1 - x3ratnx_)) / np.log2(x3ratnx_)
             return frac1_, frac2_, frac3_
+
         self.mesh_position_to_fractional_position_meshblock = mesh_position_to_fractional_position_meshblock
 
         # given mesh position, return meshblock id of the meshblock that contains the position
         @nb.njit(fastmath=True)
         def mesh_position_to_meshblock_id(x1_, x2_, x3_):
             frac1_, frac2_, frac3_ = mesh_position_to_fractional_position_root(x1_, x2_, x3_)
-            mb1_ = min(max(0, int(frac1_ * mbtable.shape[0])), mbtable.shape[0]-1)
-            mb2_ = min(max(0, int(frac2_ * mbtable.shape[1])), mbtable.shape[1]-1)
-            mb3_ = min(max(0, int(frac3_ * mbtable.shape[2])), mbtable.shape[2]-1)
+            mb1_ = min(max(0, int(frac1_ * mbtable.shape[0])), mbtable.shape[0] - 1)
+            mb2_ = min(max(0, int(frac2_ * mbtable.shape[1])), mbtable.shape[1] - 1)
+            mb3_ = min(max(0, int(frac3_ * mbtable.shape[2])), mbtable.shape[2] - 1)
             return mbtable[mb1_, mb2_, mb3_]
+
         self.mesh_position_to_meshblock_id = mesh_position_to_meshblock_id
 
         # given mesh position, return indices in root grid
@@ -210,6 +214,7 @@ class Frame:
             gidx2_ = frac2_ * nx2rt
             gidx3_ = frac3_ * nx3rt
             return gidx1_, gidx2_, gidx3_
+
         self.mesh_position_to_global_indices = mesh_position_to_global_indices
 
         # given mesh position, return indices in root grid
@@ -220,6 +225,7 @@ class Frame:
             lidx2_ = frac2_ * nx2mb
             lidx3_ = frac3_ * nx3mb
             return lidx1_, lidx2_, lidx3_
+
         self.mesh_position_to_local_indices = mesh_position_to_local_indices
 
         # given indices in root grid, return mesh position
@@ -238,6 +244,7 @@ class Frame:
             else:
                 x3_ = x3minrt + (x3maxrt - x3minrt) * (1 - x3ratrt ** gidx3_) / (1 - x3ratnxrt)
             return x1_, x2_, x3_
+
         self.global_indices_to_mesh_position = global_indices_to_mesh_position
 
         # given mesh positions and velocities, return derivatives in mesh position
@@ -258,6 +265,7 @@ class Frame:
             else:
                 raise RuntimeError('Unrecognized coordinates: ' + coordinates)
             return dx1_, dx2_, dx3_
+
         self.velocity_to_derivatives = velocity_to_derivatives
 
         # given mesh position, return the interpolated cell-centered quantities
@@ -279,7 +287,7 @@ class Frame:
                 w1_ = 0.5 + (x1_ - x1f[mb_, l1s_]) / (x1v[mb_, l1s_] - x1f[mb_, l1s_])
                 l1s_, l1e_ = l1s_ - 1, l1s_ + 1
             else:
-                w1_ = (x1_ - x1v[mb_, l1s_]) / (x1f[mb_, l1s_+1] - x1v[mb_, l1s_])
+                w1_ = (x1_ - x1v[mb_, l1s_]) / (x1f[mb_, l1s_ + 1] - x1v[mb_, l1s_])
                 l1s_, l1e_ = l1s_, l1s_ + 2
             w_[:, :, 0] *= 1.0 - w1_
             w_[:, :, 1] *= w1_
@@ -290,7 +298,7 @@ class Frame:
                     w2_ = 0.5 + (x2_ - x2f[mb_, l2s_]) / (x2v[mb_, l2s_] - x2f[mb_, l2s_])
                     l2s_, l2e_ = l2s_ - 1, l2s_ + 1
                 else:
-                    w2_ = (x2_ - x2v[mb_, l2s_]) / (x2f[mb_, l2s_+1] - x2v[mb_, l2s_])
+                    w2_ = (x2_ - x2v[mb_, l2s_]) / (x2f[mb_, l2s_ + 1] - x2v[mb_, l2s_])
                     l2s_, l2e_ = l2s_, l2s_ + 2
                 w_[:, 0, :] *= 1.0 - w2_
                 w_[:, 1, :] *= w2_
@@ -303,13 +311,14 @@ class Frame:
                     w3_ = 0.5 + (x3_ - x3f[mb_, l3s_]) / (x3v[mb_, l3s_] - x3f[mb_, l3s_])
                     l3s_, l3e_ = l3s_ - 1, l3s_ + 1
                 else:
-                    w3_ = (x3_ - x3v[mb_, l3s_]) / (x3f[mb_, l3s_+1] - x3v[mb_, l3s_])
+                    w3_ = (x3_ - x3v[mb_, l3s_]) / (x3f[mb_, l3s_ + 1] - x3v[mb_, l3s_])
                     l3s_, l3e_ = l3s_, l3s_ + 2
                 w_[0, :, :] *= 1.0 - w3_
                 w_[1, :, :] *= w3_
             else:
                 l3s_, l3e_ = 0, 1
             return (quantities_[..., mb_, l3s_:l3e_, l2s_:l2e_, l1s_:l1e_] * w_).sum(axis=-1).sum(axis=-1).sum(axis=-1)
+
         self.interpolate_cell_centered = interpolate_cell_centered
 
         # given mesh position, return mesh position after applying boundary condition
@@ -382,6 +391,7 @@ class Frame:
                 else:
                     raise RuntimeError('Unrecognized boundary ox3 = ' + ox3)
             return x1_, x2_, x3_
+
         self.apply_boundaries = apply_boundaries
 
         # return finite volume
@@ -402,4 +412,5 @@ class Frame:
                 raise RuntimeError('Unrecognized coordinates: ' + coordinates)
             dvol = dx1[:, None, None, :] * dx2[:, None, :, None] * dx3[:, :, None, None]
             return dvol
+
         self.get_finite_volume = get_finite_volume

@@ -1,5 +1,6 @@
 import numba as nb
 import numpy as np
+
 from frame import Frame
 from particles import Particles
 from utils import serialize
@@ -16,7 +17,7 @@ class Integrator:
         self.compute = dict()
 
     def _make_compute_function(self, first: Frame, second: Frame):
-        raise RuntimeError('This function is supposed to be implemented by derived classes')
+        raise NotImplemented('This function is supposed to be implemented by derived classes')
 
     def get_compute_function(self, first: Frame, second: Frame):
         h1 = dict(first.header)
@@ -43,8 +44,8 @@ class Integrator:
             tqdm.set_description_str(f'Integrating from {first.filename} to {second.filename}')
         compute = self.get_compute_function(first, second)
 
-        vel1 = np.stack([first.data[f'vel{d+1}'] for d in range(3)])
-        vel2 = np.stack([second.data[f'vel{d+1}'] for d in range(3)])
+        vel1 = np.stack([first.data[f'vel{d + 1}'] for d in range(3)])
+        vel2 = np.stack([second.data[f'vel{d + 1}'] for d in range(3)])
         newsize = compute(delta_t, vel1, vel2, par.pids, par.meshs)
         par.resize(newsize)
 
@@ -220,4 +221,5 @@ class VanLeer2(Integrator):
                 in_bound_ = np.searchsorted(types_[finished_:in_bound_], 2) + finished_
                 remaining_ = in_bound_ - finished_
             return in_bound_
+
         return compute

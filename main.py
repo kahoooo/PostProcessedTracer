@@ -1,19 +1,18 @@
 import argparse
 import itertools as it
+import warnings
+
+import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
-
 from matplotlib import colors
-import matplotlib.pyplot as plt
-
 from tqdm import tqdm
 
 from frame import Frame
-from particles import Particles
 from integrator import VanLeer2
+from particles import Particles
 from utils import poisson_disk_sampler
 
-import warnings
 warnings.filterwarnings("ignore", category=nb.NumbaExperimentalFeatureWarning)
 
 
@@ -75,6 +74,7 @@ def main():
         @nb.njit
         def seed_numba(seed):
             np.random.seed(seed)
+
         seed_numba(args.seed)
         np.random.seed(args.seed)
 
@@ -83,7 +83,7 @@ def main():
     if args.sample_mass > 0:
         ngh = frames[0].num_ghost
         ndim = frames[0].num_dimension
-        slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh), ) * ndim
+        slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh),) * ndim
         frames[0].load(['rho'])
         rho = frames[0].data['rho']
         dvol = frames[0].get_finite_volume()

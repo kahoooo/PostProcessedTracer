@@ -57,10 +57,12 @@ def main():
                         help='minimum particle distance')
     parser.add_argument('--seed', '-s', action='store', type=int,
                         help='seed for random number generation')
+    parser.add_argument('--ncols', action='store', type=int,
+                        help='number of columns used to print progress bar')
     args = parser.parse_args()
 
     # construct a sorted list of frames in the order of integration
-    with tqdm(args.frames,
+    with tqdm(args.frames, ncols=args.ncols,
               bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as t:
         frames = []
         for filename in t:
@@ -96,8 +98,8 @@ def main():
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
     observations = np.zeros(len(frames) + 1, dtype=int)
-    with tqdm(smoothing=0.1,
-              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as pbar:
+    with tqdm(smoothing=0.1, ncols=args.ncols,
+              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{eta}] {desc}') as pbar:
         for i, (first, second) in enumerate(it.zip_longest(frames, frames[1:])):
             if args.sample_space > 0 and first.filename in args.keyframes:
                 pbar.set_description_str(f'Generating particles for {first.filename}')

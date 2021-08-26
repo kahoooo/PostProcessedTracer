@@ -60,7 +60,7 @@ def main():
     args = parser.parse_args()
 
     # construct a sorted list of frames in the order of integration
-    with tqdm(args.frames, smoothing=1.0,
+    with tqdm(args.frames,
               bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as t:
         frames = []
         for filename in t:
@@ -96,7 +96,7 @@ def main():
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
     observations = np.zeros(len(frames) + 1, dtype=int)
-    with tqdm(smoothing=0.0,
+    with tqdm(smoothing=0.1,
               bar_format='{percentage:3.0f}%|{bar}| [{elapsed}<{remaining}] {desc}') as pbar:
         for i, (first, second) in enumerate(it.zip_longest(frames, frames[1:])):
             if args.sample_space > 0 and first.filename in args.keyframes:

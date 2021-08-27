@@ -97,9 +97,9 @@ def main():
 
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
-    observed = []
+    observed = [0]
     with tqdm(smoothing=0.1, ncols=args.ncols,
-              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as pbar:
+              bar_format='{percentage:3.0f}%|{bar}| [{elapsed}<{remaining}] {desc}') as pbar:
         for first, second in it.zip_longest(frames, frames[1:]):
             if args.sample_space > 0 and first.filename in args.keyframes:
                 pbar.set_description_str(f'Generating particles for {first.filename}')
@@ -116,18 +116,17 @@ def main():
                 integrator.integrate(first, second, par, pbar=pbar)
                 first.unload()
 
-            # predict number of particle-iteration left
-            observed.append(par.size)
+            # predict remaining time
+            observed.append(pbar.format_dict['elapsed'])
             if second is None:
-                pbar.total = np.sum(observed)
-            elif len(observed) > 2:
-                x = np.arange(len(observed))
-                y = np.cumsum(observed)
+                pbar.total = observed[-1]
+            elif len(observed) > 3:
+                y = np.array(observed[1:])
+                x = np.arange(y.size)
                 fitted = np.poly1d(np.polyfit(x, y, 2))
                 offset = np.max(y - fitted(x))
-                pbar.total = int(fitted(len(frames) - 1) + offset)
-
-            pbar.update(par.size)
+                pbar.total = fitted(len(frames) - 1) + offset
+            pbar.update(observed[-1] - observed[-2])
 
     frame = frames[-1]
     frame.load(['rho', 'vel1', 'vel2', 'vel3'])

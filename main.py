@@ -124,8 +124,8 @@ def main():
                 x = np.arange(len(observed))
                 y = np.cumsum(observed)
                 fitted = np.poly1d(np.polyfit(x, y, 2))
-                factor = np.max(y / fitted(x))
-                pbar.total = int(fitted(len(frames) - 1) * factor)
+                offset = np.max(y - fitted(x))
+                pbar.total = int(fitted(len(frames) - 1) + offset)
 
             pbar.update(par.size)
 

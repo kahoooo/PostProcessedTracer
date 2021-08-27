@@ -97,10 +97,10 @@ def main():
 
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
-    observations = np.zeros(len(frames) + 1, dtype=int)
+    observed = []
     with tqdm(smoothing=0.1, ncols=args.ncols,
-              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{eta}] {desc}') as pbar:
-        for i, (first, second) in enumerate(it.zip_longest(frames, frames[1:])):
+              bar_format='{percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}') as pbar:
+        for first, second in it.zip_longest(frames, frames[1:]):
             if args.sample_space > 0 and first.filename in args.keyframes:
                 pbar.set_description_str(f'Generating particles for {first.filename}')
                 poisson_disk_sampler(first, par, radius=args.sample_space)
@@ -116,15 +116,17 @@ def main():
                 integrator.integrate(first, second, par, pbar=pbar)
                 first.unload()
 
-            observations[i + 1] = observations[i] + par.size
-            if i != len(frames) - 1:
-                x = np.arange(1, i + 2)
-                y = observations[1:i + 2]
-                fitted = np.poly1d(np.polyfit(x, y, min(3, i)))
+            # predict number of particle-iteration left
+            observed.append(par.size)
+            if second is None:
+                pbar.total = np.sum(observed)
+            elif len(observed) > 2:
+                x = np.arange(len(observed))
+                y = np.cumsum(observed)
+                fitted = np.poly1d(np.polyfit(x, y, 2))
                 factor = np.max(y / fitted(x))
-                pbar.total = int(fitted(len(frames)) * factor)
-            else:
-                pbar.total = observations[-1]
+                pbar.total = int(fitted(len(frames) - 1) * factor)
+
             pbar.update(par.size)
 
     frame = frames[-1]

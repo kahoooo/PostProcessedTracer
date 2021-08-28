@@ -284,10 +284,10 @@ class Frame:
 
             l1s_ = int(lidx1_)
             if x1_ < x1v[mb_, l1s_]:
-                w1_ = 0.5 + (x1_ - x1f[mb_, l1s_]) / (x1v[mb_, l1s_] - x1f[mb_, l1s_])
+                w1_ = 0.5 + 0.5 * (x1_ - x1f[mb_, l1s_]) / (x1v[mb_, l1s_] - x1f[mb_, l1s_])
                 l1s_, l1e_ = l1s_ - 1, l1s_ + 1
             else:
-                w1_ = (x1_ - x1v[mb_, l1s_]) / (x1f[mb_, l1s_ + 1] - x1v[mb_, l1s_])
+                w1_ = 0.5 * (x1_ - x1v[mb_, l1s_]) / (x1f[mb_, l1s_ + 1] - x1v[mb_, l1s_])
                 l1s_, l1e_ = l1s_, l1s_ + 2
             w_[:, :, 0] *= 1.0 - w1_
             w_[:, :, 1] *= w1_
@@ -295,10 +295,10 @@ class Frame:
             if ndim >= 2:
                 l2s_ = int(lidx2_)
                 if x2_ < x2v[mb_, l2s_]:
-                    w2_ = 0.5 + (x2_ - x2f[mb_, l2s_]) / (x2v[mb_, l2s_] - x2f[mb_, l2s_])
+                    w2_ = 0.5 + 0.5 * (x2_ - x2f[mb_, l2s_]) / (x2v[mb_, l2s_] - x2f[mb_, l2s_])
                     l2s_, l2e_ = l2s_ - 1, l2s_ + 1
                 else:
-                    w2_ = (x2_ - x2v[mb_, l2s_]) / (x2f[mb_, l2s_ + 1] - x2v[mb_, l2s_])
+                    w2_ = 0.5 * (x2_ - x2v[mb_, l2s_]) / (x2f[mb_, l2s_ + 1] - x2v[mb_, l2s_])
                     l2s_, l2e_ = l2s_, l2s_ + 2
                 w_[:, 0, :] *= 1.0 - w2_
                 w_[:, 1, :] *= w2_
@@ -308,10 +308,10 @@ class Frame:
             if ndim >= 3:
                 l3s_ = int(lidx3_)
                 if x3_ < x3v[mb_, l3s_]:
-                    w3_ = 0.5 + (x3_ - x3f[mb_, l3s_]) / (x3v[mb_, l3s_] - x3f[mb_, l3s_])
+                    w3_ = 0.5 + 0.5 * (x3_ - x3f[mb_, l3s_]) / (x3v[mb_, l3s_] - x3f[mb_, l3s_])
                     l3s_, l3e_ = l3s_ - 1, l3s_ + 1
                 else:
-                    w3_ = (x3_ - x3v[mb_, l3s_]) / (x3f[mb_, l3s_ + 1] - x3v[mb_, l3s_])
+                    w3_ = 0.5 * (x3_ - x3v[mb_, l3s_]) / (x3f[mb_, l3s_ + 1] - x3v[mb_, l3s_])
                     l3s_, l3e_ = l3s_, l3s_ + 2
                 w_[0, :, :] *= 1.0 - w3_
                 w_[1, :, :] *= w3_

@@ -3,8 +3,8 @@ import itertools as it
 import numba as nb
 import numpy as np
 
-from frame import Frame
-from particles import Particles
+from .frame import Frame
+from .particles import Particles
 
 
 def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None, seed=None):

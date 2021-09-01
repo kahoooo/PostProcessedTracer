@@ -4,8 +4,8 @@ from collections import defaultdict
 import numpy as np
 from tqdm import tqdm
 
-from frame import Frame
-from utils import serialize
+from postprocessedtracer.frame import Frame
+from postprocessedtracer.utils import serialize
 
 
 def main():

@@ -8,10 +8,10 @@ import numpy as np
 from matplotlib import colors
 from tqdm import tqdm
 
-from frame import Frame
-from integrator import VanLeer2
-from particles import Particles
-from utils import poisson_disk_sampler
+from .frame import Frame
+from .integrator import VanLeer2
+from .particles import Particles
+from .utils import poisson_disk_sampler
 
 warnings.filterwarnings("ignore", category=nb.NumbaExperimentalFeatureWarning)
 

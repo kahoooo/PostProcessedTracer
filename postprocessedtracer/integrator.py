@@ -1,9 +1,9 @@
 import numba as nb
 import numpy as np
 
-from frame import Frame
-from particles import Particles
-from utils import serialize
+from .frame import Frame
+from .particles import Particles
+from .utils import serialize
 
 
 class Integrator:

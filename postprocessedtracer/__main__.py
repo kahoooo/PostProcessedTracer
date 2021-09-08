@@ -99,9 +99,16 @@ def main():
 
     observed = [0]
     with tqdm(ncols=args.ncols, bar_format='{percentage:3.0f}%|{bar}| [{elapsed}<{remaining}] {desc}') as pbar:
+        def set_description(desc):
+            if not hasattr(set_description, 'desc_maxlen'):
+                set_description.desc_maxlen = 0
+            desc = desc.ljust(set_description.desc_maxlen)
+            pbar.set_description_str(desc)
+            set_description.desc_maxlen = max(set_description.desc_maxlen, len(desc))
+
         for first, second in it.zip_longest(frames, frames[1:]):
             if args.sample_space > 0 and first.filename in args.keyframes:
-                pbar.set_description_str(f'Generating particles for {first.filename}')
+                set_description(f'Generating particles for {first.filename}')
                 poisson_disk_sampler(first, par, radius=args.sample_space)
 
             np.savez(first.filename + '.npz',
@@ -109,10 +116,10 @@ def main():
                      pids=par.pids, meshs=par.meshs)
 
             if second is not None:
-                t.set_description_str(f'Reading data from {first.filename}')
+                set_description(f'Reading data from {first.filename}')
                 first.load(['vel1', 'vel2', 'vel3'])
                 second.load(['vel1', 'vel2', 'vel3'])
-                integrator.integrate(first, second, par, pbar=pbar)
+                integrator.integrate(first, second, par, set_description=set_description)
                 first.unload()
 
             # predict remaining time

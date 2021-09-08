@@ -184,9 +184,9 @@ class VanLeer2(Integrator):
 
                         # integrate full time step
                         time_ = time_ + dt_
-                        x1_ = x1_ + sign * 0.5 * dt_ * derv1_
-                        x2_ = x2_ + sign * 0.5 * dt_ * derv2_
-                        x3_ = x3_ + sign * 0.5 * dt_ * derv3_
+                        x1_ = x1_ + sign * dt_ * derv1_
+                        x2_ = x2_ + sign * dt_ * derv2_
+                        x3_ = x3_ + sign * dt_ * derv3_
 
                         if (x1_ < x1min_ or x1_ > x1max_
                                 or x2_ < x2min_ or x2_ > x2max_

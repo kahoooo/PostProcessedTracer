@@ -81,19 +81,8 @@ def main():
         seed_numba(args.seed)
         np.random.seed(args.seed)
 
-    # particle positions in mesh coordinates, no particles initially, then sample weighted by mass
+    # particle positions in mesh coordinates, no particles initially
     par = Particles(0)
-    if args.sample_mass > 0:
-        ngh = frames[0].num_ghost
-        ndim = frames[0].num_dimension
-        slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh),) * ndim
-        frames[0].load(['rho'])
-        rho = frames[0].data['rho']
-        dvol = frames[0].get_finite_volume()
-        mass_per_cell = (rho * dvol)[slc]
-        mindist = (args.sample_mass / mass_per_cell) ** (1 / ndim)
-        nsample = np.log(mass_per_cell.max() / mass_per_cell.sum()) / np.log(0.99)
-        poisson_disk_sampler(frames[0], par, mindist=mindist, seed=nsample)
 
     integrator = VanLeer2(cfl=0.1, cfl_inactive=0.01)
 
@@ -107,9 +96,22 @@ def main():
             set_description.desc_maxlen = max(set_description.desc_maxlen, len(desc))
 
         for first, second in it.zip_longest(frames, frames[1:]):
-            if args.sample_space > 0 and first.filename in args.keyframes:
-                set_description(f'Generating particles for {first.filename}')
-                poisson_disk_sampler(first, par, radius=args.sample_space)
+            if first.filename in args.keyframes:
+                if args.sample_mass > 0:
+                    set_description(f'Generating mass particles for {first.filename}')
+                    ngh = first.num_ghost
+                    ndim = first.num_dimension
+                    slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh),) * ndim
+                    first.load(['rho'])
+                    rho = first.data['rho']
+                    dvol = first.get_finite_volume()
+                    mass_per_cell = (rho * dvol)[slc]
+                    mindist = (args.sample_mass / mass_per_cell) ** (1 / ndim)
+                    nsample = np.log(mass_per_cell.max() / mass_per_cell.sum()) / np.log(0.99)
+                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample if par.size == 0 else 0)
+                if args.sample_space > 0:
+                    set_description(f'Generating space particles for {first.filename}')
+                    poisson_disk_sampler(first, par, radius=args.sample_space)
 
             np.savez(first.filename + '.npz',
                      frame=first.filename, time=first.time,

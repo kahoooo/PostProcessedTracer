@@ -108,14 +108,14 @@ def main():
                     mass_per_cell = (rho * dvol)[slc]
                     mindist = (args.sample_mass / mass_per_cell) ** (1 / ndim)
                     nsample = np.log(mass_per_cell.max() / mass_per_cell.sum()) / np.log(0.99)
-                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample if par.size == 0 else 0)
+                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample if par.size == 0 else 0, flag='M')
                 if args.sample_space > 0:
                     set_description(f'Generating space particles for {first.filename}')
-                    poisson_disk_sampler(first, par, radius=args.sample_space)
+                    poisson_disk_sampler(first, par, radius=args.sample_space, flag='S')
 
             np.savez(first.filename + '.npz',
                      frame=first.filename, time=first.time,
-                     pids=par.pids, meshs=par.meshs)
+                     pids=par.pids, meshs=par.meshs, flags=par.flags)
 
             if second is not None:
                 set_description(f'Reading data from {first.filename}')

@@ -7,7 +7,7 @@ from .frame import Frame
 from .particles import Particles
 
 
-def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None, seed=None):
+def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None, seed=None, flag=None):
     """
     Provided the frame and existing particles, generate a blue noise smaple in the unoccupied regions and append to
     the end of the array using (modified) Bridson's algorithm:
@@ -18,6 +18,7 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
     :param radius: minimum distance between particles
     :param mindist: minimum distance as an array, override radius if set
     :param seed: number of initial sample to be put in
+    :param flag: flag for newly generated particles
     :return: None
     """
 
@@ -197,6 +198,8 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
     par.gidxs[-dn:] = ptpos[-dn:]
     par.meshs[-dn:, 0], par.meshs[-dn:, 1], par.meshs[-dn:, 2] = \
         gidx2mesh(par.gidxs[-dn:, 0], par.gidxs[-dn:, 1], par.gidxs[-dn:, 2])
+
+    par.flags[-dn:] = flag
 
 
 def _convert_to_serializable(x):

@@ -46,7 +46,7 @@ class Integrator:
 
         vel1 = np.stack([first.data[f'vel{d + 1}'] for d in range(3)])
         vel2 = np.stack([second.data[f'vel{d + 1}'] for d in range(3)])
-        newsize = compute(delta_t, vel1, vel2, par.pids, par.meshs)
+        newsize = compute(delta_t, vel1, vel2, par.pids, par.meshs, par.flags)
         par.resize(newsize)
 
 
@@ -91,7 +91,7 @@ class VanLeer2(Integrator):
         interpcc2 = second.interpolate_cell_centered
 
         @nb.njit(fastmath=True)
-        def compute(delta_t_, vel1_, vel2_, pids_, meshs_):
+        def compute(delta_t_, vel1_, vel2_, pids_, meshs_, flags_):
             # during integration, particles are separated into three types: finished, out-of-bound and remaining
             # particles are ordered such that finished particles would be in the front, and out-of-bound particles would
             # be at the back, the remaining particles are ordered by (meshblock id1, meshblock id2, time elapsed)
@@ -120,6 +120,7 @@ class VanLeer2(Integrator):
                 order_ += finished_
                 pids_[finished_:in_bound_] = pids_[order_]
                 meshs_[finished_:in_bound_, :] = meshs_[order_, :]
+                flags_[finished_:in_bound_] = flags_[order_]
                 time_elapsed_[finished_:in_bound_] = time_elapsed_[order_]
                 mbs1_[finished_:in_bound_] = mbs1_[order_]
                 mbs2_[finished_:in_bound_] = mbs2_[order_]
@@ -127,6 +128,7 @@ class VanLeer2(Integrator):
                 order_ += finished_
                 pids_[finished_:in_bound_] = pids_[order_]
                 meshs_[finished_:in_bound_, :] = meshs_[order_, :]
+                flags_[finished_:in_bound_] = flags_[order_]
                 time_elapsed_[finished_:in_bound_] = time_elapsed_[order_]
                 mbs1_[finished_:in_bound_] = mbs1_[order_]
                 mbs2_[finished_:in_bound_] = mbs2_[order_]
@@ -134,6 +136,7 @@ class VanLeer2(Integrator):
                 order_ += finished_
                 pids_[finished_:in_bound_] = pids_[order_]
                 meshs_[finished_:in_bound_, :] = meshs_[order_, :]
+                flags_[finished_:in_bound_] = flags_[order_]
                 time_elapsed_[finished_:in_bound_] = time_elapsed_[order_]
                 mbs1_[finished_:in_bound_] = mbs1_[order_]
                 mbs2_[finished_:in_bound_] = mbs2_[order_]
@@ -214,6 +217,7 @@ class VanLeer2(Integrator):
                 order_ += finished_
                 pids_[finished_:in_bound_] = pids_[order_]
                 meshs_[finished_:in_bound_] = meshs_[order_, :]
+                flags_[finished_:in_bound_] = flags_[order_]
                 time_elapsed_[finished_:in_bound_] = time_elapsed_[order_]
                 types_[finished_:in_bound_] = types_[order_]
 

@@ -1,4 +1,5 @@
 import argparse
+import functools
 import itertools as it
 import warnings
 
@@ -51,6 +52,8 @@ def main():
                         help='key frames when new particles is inserted')
     parser.add_argument('--backward', '-b', action='store_true',
                         help='integrate backward in time')
+    parser.add_argument('--sample_gradient', action='store', type=float, default=0,
+                        help='minimum particle distance in gradient-space')
     parser.add_argument('--sample_mass', action='store', type=float, default=0,
                         help='minimum particle distance in mass-space')
     parser.add_argument('--sample_space', action='store', type=float, default=0,
@@ -97,6 +100,18 @@ def main():
 
         for first, second in it.zip_longest(frames, frames[1:]):
             if first.filename in args.keyframes:
+                if args.sample_gradient > 0:
+                    set_description(f'Generating gradient particles for {first.filename}')
+                    ngh = first.num_ghost
+                    ndim = first.num_dimension
+                    slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh),) * ndim
+                    first.load(['rho'])
+                    rho = first.data['rho']
+                    grad = np.sqrt(sum(map(np.square, np.gradient(
+                        np.log10(rho), axis=(d for d in range(4) if slc[d] != slice(None))) + [1e-10])))[slc]
+                    mindist = args.sample_gradient / grad
+                    nsample = np.log(grad.max() / grad.sum()) / np.log(0.99)
+                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample if par.size == 0 else 0, flag='G')
                 if args.sample_mass > 0:
                     set_description(f'Generating mass particles for {first.filename}')
                     ngh = first.num_ghost

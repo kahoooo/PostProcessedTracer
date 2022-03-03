@@ -111,7 +111,7 @@ def main():
                     mass_per_cell = (rho * dvol)[slc]
                     mindist = (args.sample_mass / mass_per_cell) ** (1 / ndim)
                     nsample = np.log(mass_per_cell.max() / mass_per_cell.sum()) / np.log(0.99)
-                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample if par.size == 0 else 0, flag='M')
+                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample, flag='M')
                 if args.sample_gradient > 0:
                     set_description(f'Generating gradient particles for {first.filename}')
                     ngh = first.num_ghost
@@ -122,8 +122,8 @@ def main():
                     grad = np.sqrt(sum(map(np.square, np.gradient(
                         np.log10(rho), axis=(d for d in range(4) if slc[d] != slice(None))) + [1e-10])))[slc]
                     mindist = args.sample_gradient / grad
-                    nsample = np.log(grad.max() / grad.sum()) / np.log(0.99)
-                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample if par.size == 0 else 0, flag='G')
+                    nsample = np.log(grad.max() / grad.sum()) / np.log(0.999)
+                    poisson_disk_sampler(first, par, mindist=mindist, seed=nsample, flag='G')
                 if args.sample_space > 0:
                     set_description(f'Generating space particles for {first.filename}')
                     poisson_disk_sampler(first, par, radius=args.sample_space, flag='S')

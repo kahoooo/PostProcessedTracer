@@ -1,5 +1,4 @@
 import argparse
-import functools
 import itertools as it
 import warnings
 
@@ -113,14 +112,28 @@ def main():
                     nsample = np.log(mass_per_cell.max() / mass_per_cell.sum()) / np.log(0.99)
                     poisson_disk_sampler(first, par, mindist=mindist, seed=nsample, flag='M')
                 if args.sample_gradient > 0:
+                    from scipy.ndimage import gaussian_filter1d
                     set_description(f'Generating gradient particles for {first.filename}')
-                    ngh = first.num_ghost
-                    ndim = first.num_dimension
-                    slc = (slice(None),) * (4 - ndim) + (slice(ngh, -ngh),) * ndim
                     first.load(['rho'])
-                    rho = first.data['rho']
-                    grad = np.sqrt(sum(map(np.square, np.gradient(
-                        np.log10(rho), axis=(d for d in range(4) if slc[d] != slice(None))) + [1e-10])))[slc]
+                    rho = np.log10(first.data['rho'])
+                    rf = first.header['x1f'][:, None, None, :]
+                    rv = first.header['x1v'][:, None, None, :]
+                    drf = np.diff(rf, axis=3)
+                    drv = np.diff(rv, axis=3)
+                    gradrv = np.gradient(rv, axis=3)
+                    gradr1 = rv * np.gradient(rho, axis=3) / gradrv
+                    gradr2 = rv ** 2 * np.pad(np.diff(np.diff(rho, axis=3) / drv, axis=3),
+                                              ((0, 0), (0, 0), (0, 0), (1, 1)), constant_values=0) / drf
+                    qf = first.header['x2f'][:, None, :, None]
+                    qv = first.header['x2v'][:, None, :, None]
+                    dqf = np.diff(qf, axis=2)
+                    dqv = np.diff(qv, axis=2)
+                    gradq = np.pad(np.diff(np.diff(rho, axis=2) / dqv, axis=2), ((0, 0), (0, 0), (1, 1), (0, 0)),
+                                   constant_values=0) / dqf
+                    grad = -gradr1 - gradr2 - gradq
+                    grad = gaussian_filter1d(grad, 2.0, axis=3, truncate=0.5)
+                    grad = gaussian_filter1d(grad, 2.0, axis=2, truncate=0.5)
+                    grad = np.clip(grad, 1e0, 1e2)
                     mindist = args.sample_gradient / grad
                     nsample = np.log(grad.max() / grad.sum()) / np.log(0.999)
                     poisson_disk_sampler(first, par, mindist=mindist, seed=nsample, flag='G')

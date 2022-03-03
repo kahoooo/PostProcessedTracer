@@ -17,7 +17,7 @@ class Particles:
         self.meshs = np.empty((size, 3), dtype=np.float64)
         self.carts = np.empty((size, 3), dtype=np.float64)
         self.gidxs = np.empty((size, 3), dtype=np.float64)
-        self.flags = np.arange(0, size, dtype='|S1')
+        self.flags = np.empty(size, dtype='|S1')
 
     def resize(self, size):
         dsize = size - self.size

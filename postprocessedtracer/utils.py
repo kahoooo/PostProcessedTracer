@@ -191,15 +191,16 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
     modified_bridson(pictable, nxt, ptpos)
 
     # resize, append and convert back to physical coordinate
-    dn = len(ptpos) - par.size
-    par.resize(len(ptpos))
+    if (len(ptpos) > par.size):
+        dn = len(ptpos) - par.size
+        par.resize(len(ptpos))
 
-    gidx2mesh = frame.global_indices_to_mesh_position
-    par.gidxs[-dn:] = ptpos[-dn:]
-    par.meshs[-dn:, 0], par.meshs[-dn:, 1], par.meshs[-dn:, 2] = \
-        gidx2mesh(par.gidxs[-dn:, 0], par.gidxs[-dn:, 1], par.gidxs[-dn:, 2])
+        gidx2mesh = frame.global_indices_to_mesh_position
+        par.gidxs[-dn:] = ptpos[-dn:]
+        par.meshs[-dn:, 0], par.meshs[-dn:, 1], par.meshs[-dn:, 2] = \
+            gidx2mesh(par.gidxs[-dn:, 0], par.gidxs[-dn:, 1], par.gidxs[-dn:, 2])
 
-    par.flags[-dn:] = flag
+        par.flags[-dn:] = flag
 
 
 def _convert_to_serializable(x):

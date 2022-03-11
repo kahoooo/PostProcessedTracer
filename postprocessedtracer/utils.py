@@ -191,7 +191,7 @@ def poisson_disk_sampler(frame: Frame, par: Particles, radius=1.0, mindist=None,
     modified_bridson(pictable, nxt, ptpos)
 
     # resize, append and convert back to physical coordinate
-    if (len(ptpos) > par.size):
+    if len(ptpos) > par.size:
         dn = len(ptpos) - par.size
         par.resize(len(ptpos))
 

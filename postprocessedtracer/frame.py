@@ -1,24 +1,9 @@
+import itertools as it
 from dataclasses import dataclass, field
 from typing import Tuple, Callable
 
 import numba as nb
 import numpy as np
-
-
-def _convert_type(x):
-    if isinstance(x, np.integer):
-        return int(x)
-    if isinstance(x, np.floating):
-        return float(x)
-    if isinstance(x, bytes):
-        return x.decode('ascii', 'replace')
-    if isinstance(x, np.ndarray):
-        if issubclass(np.obj2sctype(x.dtype), bytes):
-            return _convert_type(x.tolist())
-        return x.astype(np.obj2sctype(x.dtype))
-    if isinstance(x, list):
-        return list(map(_convert_type, x))
-    return x
 
 
 @dataclass(init=False, order=True)
@@ -27,6 +12,7 @@ class Frame:
     time: float = field(repr=False)
     header: dict = field(compare=False, repr=False)
     data: dict = field(compare=False, repr=False)
+    derived_requirements: dict = field(compare=False, repr=False)
     num_ghost: int = field(compare=False, repr=False)
     num_dimension: int = field(compare=False, repr=False)
     boundaries: Tuple[Tuple[str, str], Tuple[str, str], Tuple[str, str]] = field(compare=False, repr=False)
@@ -58,6 +44,10 @@ class Frame:
         self.time = self.header['Time']
         self.data = {}
 
+        self.derived_requirements = {
+            'int_rho_dr': ['rho']
+        }
+
         self._prepare_functions()
 
     def load(self, quantities=None):
@@ -70,6 +60,8 @@ class Frame:
         dataset_prefix = np.cumsum(num_variables)
         dataset_offsets = dataset_prefix - dataset_prefix[0]
 
+        derived_quantities = []
+
         with h5py.File(self.filename, 'r') as f:
             dataset_names = self.header['DatasetNames']
             variable_names = self.header['VariableNames']
@@ -78,17 +70,32 @@ class Frame:
                 if q in self.data:
                     continue
 
-                if q not in variable_names:
-                    raise RuntimeError(f'Quantity "{q}" not found, '
-                                       f'available quantities include {variable_names}')
+                if q not in variable_names and q not in self.derived_requirements:
+                    raise RuntimeError(f'Quantity "{q}" not found, available quantities include '
+                                       f'{variable_names + list(self.derived_requirements.keys())}')
 
-                variable_index = variable_names.index(q)
-                dataset_index = np.searchsorted(dataset_prefix, variable_index)
-                variable_index -= dataset_offsets[dataset_index]
-                self.data[q] = _convert_type(f[dataset_names[dataset_index]][variable_index])
+                if q in variable_names:
+                    variable_index = variable_names.index(q)
+                    dataset_index = np.searchsorted(dataset_prefix, variable_index)
+                    variable_index -= dataset_offsets[dataset_index]
+                    self.data[q] = _convert_type(f[dataset_names[dataset_index]][variable_index])
+                elif q in self.derived_requirements:
+                    quantities.extend(self.derived_requirements[q])
+                    derived_quantities.append(q)
+
+        for q in derived_quantities:
+            if q in self.data:
+                continue
+            self.derive_quantity(q)
 
     def unload(self):
         self.data = {}
+
+    def derive_quantity(self, quantity):
+        if quantity == 'int_rho_dr':
+            self.data[quantity] = _integrate_x1(self, 'rho')
+            _fix_boundary(self, 'int_rho_dr', boundary_func=((_outflow_boundary, _zero_boundary),
+                                                             (_reflect_boundary, _reflect_boundary), (None, None)))
 
     def _load_header(self):
         import h5py
@@ -414,3 +421,231 @@ class Frame:
             return dvol
 
         self.get_finite_volume = get_finite_volume
+
+
+def _convert_type(x):
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating):
+        return float(x)
+    if isinstance(x, bytes):
+        return x.decode('ascii', 'replace')
+    if isinstance(x, np.ndarray):
+        if issubclass(np.obj2sctype(x.dtype), bytes):
+            return _convert_type(x.tolist())
+        return x.astype(np.obj2sctype(x.dtype))
+    if isinstance(x, list):
+        return list(map(_convert_type, x))
+    return x
+
+
+def _integrate_x1(frame: Frame, quantity):
+    class PartialIntegralTree:
+        level: int
+        lloc: np.ndarray
+        grid_size: np.ndarray
+        node_value: np.ndarray
+        leaf_value: np.ndarray
+        leaf: list['PartialIntegralTree']
+
+        def __init__(self, level: int, lloc: np.ndarray, grid_size: np.ndarray):
+            self.level = level
+            self.lloc = lloc
+            self.grid_size = grid_size
+            self.node_value = np.zeros(grid_size, dtype=float)
+            self.leaf_value = np.zeros(grid_size, dtype=float)
+            self.leaf = [None] * 4
+
+        def add(self, level: int, lloc: np.ndarray, value: np.ndarray):
+            self._add_helper(level, lloc, value)
+
+        def _add_helper(self, level: int, lloc: np.ndarray, value: np.ndarray) -> tuple:
+            if level == self.level:
+                self.node_value += value
+                return np.array(value), np.array([0, 0])
+
+            leaf, lc = self.get_leaf(level, lloc)
+            coarse_value, jks = leaf._add_helper(level, lloc, value)
+            if coarse_value.shape[0] > 1:
+                coarse_value[0::2, :] += coarse_value[1::2, :]
+            if coarse_value.shape[1] > 1:
+                coarse_value[:, 0::2] += coarse_value[:, 1::2]
+            coarse_value = coarse_value[::2, ::2]
+            coarse_value *= 0.5 ** sum(self.grid_size > 1)
+            js, ks = jks = (jks + lc * self.grid_size) >> 1
+            je, ke = jks + np.array(coarse_value.shape)
+            self.leaf_value[js:je, ks:ke] += coarse_value
+
+            return coarse_value, jks
+
+        def get(self, level: int, lloc: np.ndarray) -> np.ndarray:
+            return self._get_helper(level, lloc)[0]
+
+        def _get_helper(self, level: int, lloc: np.ndarray):
+            if level == self.level:
+                return self.node_value + self.leaf_value, np.array([0, 0]), self.grid_size.copy()
+
+            leaf, lc = self.get_leaf(level, lloc)
+            result, jks, sz = leaf._get_helper(level, lloc)
+            if sz[0] > 1:
+                sz[0] >>= 1
+            if sz[1] > 1:
+                sz[1] >>= 1
+            js, ks = jks = (jks + lc * self.grid_size) >> 1
+            je, ke = jks + sz
+            result += np.repeat(np.repeat(self.node_value[js:je, ks:ke], self.grid_size[0] // sz[0], axis=0),
+                                self.grid_size[1] // sz[1], axis=1)
+
+            return result, jks, sz
+
+        def get_leaf(self, level: int, lloc: np.ndarray) -> tuple['PartialIntegralTree', np.ndarray]:
+            lc = lloc >> (level - self.level - 1) & 1
+            i = lc[0] + lc[1] * 2
+            if self.leaf[i] is None:
+                self.leaf[i] = PartialIntegralTree(self.level + 1, lloc * 2 + lc, self.grid_size)
+            return self.leaf[i], lc
+
+        @staticmethod
+        def from_frame(frame_: Frame):
+            locmax = np.max(frame_.header['RootGridSize'][1:frame_.num_dimension] / (
+                    frame_.header['MeshBlockSize'][1:frame_.num_dimension] - 2 * frame_.num_ghost))
+            level, size = 0, 1
+            while size < locmax:
+                level += 1
+                size *= 2
+            grid_size = frame_.header['MeshBlockSize'][1:].copy()
+            grid_size[:frame_.num_dimension - 1] -= 2 * frame_.num_ghost
+            return PartialIntegralTree(-level, np.array([0, 0]), grid_size)
+
+    frame.load([quantity])
+    ng = frame.num_ghost
+
+    slcs = (slice(None),) * (3 - frame.num_dimension) + (slice(ng, -ng),) * frame.num_dimension
+    tree = PartialIntegralTree.from_frame(frame)
+    res = np.zeros_like(frame.data[quantity])
+    for mb in sorted(range(frame.header['NumMeshBlocks']), key=lambda i: frame.header['LogicalLocations'][i, 0] << (
+            frame.header['MaxLevel'] - frame.header['Levels'][i]), reverse=True):
+        dx1f = np.diff(frame.header['x1f'][mb, ng:-ng])[None, None, :]
+        dx1vf = (frame.header['x1v'][mb, ng:-ng] - frame.header['x1f'][mb, ng:-ng - 1])[None, None, :]
+        rho = frame.data[quantity][(mb, *slcs)]
+        dtau = np.cumsum((rho * dx1f)[:, :, ::-1], axis=2)[:, :, ::-1]
+        start = tree.get(frame.header['Levels'][mb], frame.header['LogicalLocations'][mb, 1:])
+        tree.add(frame.header['Levels'][mb], frame.header['LogicalLocations'][mb, 1:], dtau[:, :, 0].T)
+        res[(mb, *slcs)] = start.T[:, :, None] + dtau - rho * dx1vf
+    return res
+
+
+def _fix_boundary(frame: Frame, quantity: str, boundary_func):
+    mbfinder = dict()
+    for mb in range(frame.header['NumMeshBlocks']):
+        level = frame.header['Levels'][mb]
+        lloc = frame.header['LogicalLocations'][mb]
+        mbfinder[(level, tuple(lloc))] = mb
+
+    arr = frame.data[quantity]
+    for mymb in range(frame.header['NumMeshBlocks']):
+        ngh = frame.num_ghost
+        mylevel = frame.header['Levels'][mymb]
+        mylloc = frame.header['LogicalLocations'][mymb]
+        active = [True] * frame.num_dimension + [False] * (3 - frame.num_dimension)
+        xls = [-1, 0, 1]
+        yls = [-1, 0, 1] if active[1] else [0]
+        zls = [-1, 0, 1] if active[2] else [0]
+        il, iu = (ngh, frame.header['MeshBlockSize'][0] - ngh)
+        jl, ju = (ngh, frame.header['MeshBlockSize'][1] - ngh) if active[1] else (0, 1)
+        kl, ku = (ngh, frame.header['MeshBlockSize'][2] - ngh) if active[2] else (0, 1)
+        nx1, nx2, nx3 = iu - il, ju - jl, ku - kl
+        for x, y, z in sorted(it.product(xls, yls, zls), key=lambda xyz_: sum(map(abs, xyz_))):
+            if x == y == z == 0:
+                continue
+            myil, myiu = (0, il) if x == -1 else (iu, iu+ngh) if x == 1 else (il, iu)
+            myjl, myju = (0, jl) if y == -1 else (ju, ju+ngh) if y == 1 else (jl, ju)
+            mykl, myku = (0, kl) if z == -1 else (ku, ku+ngh) if z == 1 else (kl, ku)
+            boundary = None
+
+            # first, find if there is meshblock at same level
+            theirlevel = mylevel
+            theirlloc = mylloc + np.array([x, y, z])
+            if (theirlevel, tuple(theirlloc)) in mbfinder:
+                theirmb = mbfinder[(theirlevel, tuple(theirlloc))]
+                theiril, theiriu = (iu - ngh, iu) if x == -1 else (ngh, ngh + ngh) if x == 1 else (il, iu)
+                theirjl, theirju = (ju - ngh, ju) if y == -1 else (ngh, ngh + ngh) if y == 1 else (jl, ju)
+                theirkl, theirku = (ku - ngh, ku) if z == -1 else (ngh, ngh + ngh) if z == 1 else (kl, ku)
+                boundary = arr[theirmb, theirkl:theirku, theirjl:theirju, theiril:theiriu]
+
+            # second, find if there is coarser meshblock
+            theirlevel = mylevel - 1
+            theirlloc = (mylloc + np.array([x, y, z])) >> 1
+            if boundary is None and (theirlevel, tuple(theirlloc)) in mbfinder:
+                theirmb = mbfinder[(theirlevel, tuple(theirlloc))]
+                theiril, theiriu = ((iu - (ngh >> 1), iu) if x == -1 else (ngh, ngh + (ngh >> 1)) if x == 1 else
+                                    (il + (nx1 >> 1), iu) if mylloc[0] & 1 else (il, iu - (nx1 >> 1)))
+                theirjl, theirju = ((ju - (ngh >> 1), ju) if y == -1 else (ngh, ngh + (ngh >> 1)) if y == 1 else
+                                    (jl + (nx2 >> 1), ju) if mylloc[1] & 1 else (jl, ju - (nx2 >> 1)))
+                theirkl, theirku = ((ku - (ngh >> 1), ku) if z == -1 else (ngh, ngh + (ngh >> 1)) if z == 1 else
+                                    (kl + (nx3 >> 1), ku) if mylloc[2] & 1 else (kl, ku - (nx3 >> 1)))
+                boundary = np.repeat(np.repeat(np.repeat(
+                    arr[theirmb, theirkl:theirku, theirjl:theirju, theiril:theiriu], 2, axis=0), 2, axis=1), 2, axis=3)
+
+            # third, find if there is finer meshblock
+            theirlevel = mylevel + 1
+            theirlloc = (mylloc + np.array([x, y, z])) << 1
+            if boundary is None and (theirlevel, tuple(theirlloc)) in mbfinder:
+                theiril, theiriu = (iu - ngh, iu) if x == -1 else (ngh, ngh + ngh) if x == 1 else (il, iu)
+                theirjl, theirju = (ju - ngh, ju) if y == -1 else (ngh, ngh + ngh) if y == 1 else (jl, ju)
+                theirkl, theirku = (ku - ngh, ku) if z == -1 else (ngh, ngh + ngh) if z == 1 else (kl, ku)
+
+                boundary = []
+                for z_ in range(active[2] + 1):
+                    boundary_ = []
+                    for y_ in range(active[1] + 1):
+                        boundary__ = []
+                        for x_ in range(active[0] + 1):
+                            theirmb = mbfinder[(theirlevel, tuple(theirlloc + np.array([x_, y_, z_])))]
+                            boundary__.append(arr[theirmb, theirkl:theirku, theirjl:theirju, theiril:theiriu])
+                        boundary_.append(boundary__)
+                    boundary.append(boundary_)
+                boundary = np.block(boundary)
+                boundary[:, :, 0::2] += boundary[:, :, 1::2]
+                if active[1]:
+                    boundary[:, 0::2, 0::2] += boundary[:, 1::2, 0::2]
+                if active[2]:
+                    boundary[0::2, 0::2, 0::2] += boundary[1::2, 0::2, 0::2]
+                boundary *= 0.5 ** sum(active)
+
+            if boundary is None:
+                meshblock_size = frame.header['MeshBlockSize'].copy()
+                meshblock_size[:frame.num_dimension] -= ngh * 2
+                root_indices = (theirlloc >> theirlevel) * meshblock_size
+                for i, (idx, sz) in enumerate(zip(root_indices, frame.header['RootGridSize'])):
+                    d = -1 if idx < 0 else 1 if idx >= sz else 0
+                    if d != 0:
+                        print(x, y, z, root_indices, meshblock_size, theirlloc, theirlevel, mylloc, mylevel)
+                        func = boundary_func[i][(d + 1) // 2]
+                        arr_ = arr[mymb]
+                        arr_ = np.moveaxis(arr_, 2-i, 2)
+                        if d == 1:
+                            arr_ = np.flip(arr_, 2)
+                        jl_, ju_ = (myjl, myju) if i == 0 else (myil, myiu)
+                        kl_, ku_ = (myjl, myju) if i == 2 else (mykl, myku)
+                        boundary = func(arr_, ngh, jl_, ju_, kl_, ku_)
+                        if d == 1:
+                            boundary = np.flip(boundary, 2)
+                        boundary = np.moveaxis(boundary, 2, 2-i)
+                        break
+                else:
+                    boundary = np.full((myku - mykl, myju - myjl, myiu - myil), np.nan)
+
+            arr[mymb, mykl:myku, myjl:myju, myil:myiu] = boundary
+
+
+def _zero_boundary(arr, ngh, jl, ju, kl, ku):
+    return np.zeros_like(arr[kl:ku, jl:ju, 0:ngh])
+
+
+def _outflow_boundary(arr, ngh, jl, ju, kl, ku):
+    return np.repeat(arr[kl:ku, jl:ju, ngh:ngh+1], ngh, axis=2)
+
+
+def _reflect_boundary(arr, ngh, jl, ju, kl, ku):
+    return arr[kl:ku, jl:ju, ngh:ngh+ngh][:, :, ::-1]

@@ -620,7 +620,6 @@ def _fix_boundary(frame: Frame, quantity: str, boundary_func):
                 for i, (idx, sz) in enumerate(zip(root_indices, frame.header['RootGridSize'])):
                     d = -1 if idx < 0 else 1 if idx >= sz else 0
                     if d != 0:
-                        print(x, y, z, root_indices, meshblock_size, theirlloc, theirlevel, mylloc, mylevel)
                         func = boundary_func[i][(d + 1) // 2]
                         arr_ = arr[mymb]
                         arr_ = np.moveaxis(arr_, 2-i, 2)

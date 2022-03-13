@@ -57,6 +57,19 @@ def main():
 
             par_out[key] = value_out
 
+    # get column density at all times
+    keys = list(par_out.keys())
+    keys.sort(key=lambda k: par_out[k][argsteps, 1])
+    r_i = [par_out[k][argsteps, 1] for k in keys]
+    m = list(np.vectorize(extend.lamb_m_i)(r_i))
+    m.append(extend.mmax)
+    with tqdm(list(enumerate(time[1:])), ncols=args['ncols']) as t:
+        for i, timenow in t:
+            dsigma = np.vectorize(extend.lamb_sigma)(timenow, m[:-1], m[1:])
+            sigma = np.cumsum(dsigma[::-1])[::-1]
+            for k, s in zip(keys, sigma):
+                par_out[k][argsteps-i-1, 9] = s
+
     np.savez(args['out'], **par_out)
 
 

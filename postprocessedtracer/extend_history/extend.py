@@ -1,4 +1,4 @@
-from functools import lru_cache
+from functools import cache
 
 import numpy as np
 import scipy.optimize as so
@@ -66,7 +66,7 @@ class Extend:
         lamb_m_i_m_prime2 = sp.lambdify((r_i, m), pre_lambidify(d2mi_dri2))
         lamb_m_f_m_prime2 = sp.lambdify((r_f, m), pre_lambidify(d2mf_drf2))
 
-        @lru_cache
+        @cache
         def r_i_nsolve(m_):
             m_ = float(m_)
             return so.root_scalar(lamb_m_i_m,
@@ -74,7 +74,7 @@ class Extend:
                                   fprime2=lamb_m_i_m_prime2,
                                   args=(m_,), x0=1.0, method='halley').root
 
-        @lru_cache
+        @cache
         def r_f_nsolve(m_):
             m_ = float(m_)
             return so.root_scalar(lamb_m_f_m,
@@ -126,6 +126,14 @@ class Extend:
         self.lamb_rho = lamb_rho
         self.omega = omega_arr
         self.phi = phi_arr
+
+        m_s, m_e = sp.symbols('m_s, m_e', real=True)
+        sigma = sp.Integral(rho / dm_dr, (m, m_s, m_e))
+        lamb_sigma = sp.lambdify((t, m_s, m_e), floatify(pre_lambidify(sigma)),
+                                 [{'r_i': r_i_nsolve, 'r_f': r_f_nsolve}, 'numpy', 'scipy'])
+
+        self.mmax = mmax
+        self.lamb_sigma = lamb_sigma
 
     def history(self, r_i=None, r_f=None):
         if r_i is not None:

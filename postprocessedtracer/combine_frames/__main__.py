@@ -57,14 +57,16 @@ def main():
             meshs = par['meshs']
             flags = par['flags']
 
-            frame.load(['rho', 'vel1', 'vel2', 'vel3', 'press'])
+            frame.load(['rho', 'vel1', 'vel2', 'vel3', 'press', 'int_rho_dr'])
 
             quantities = np.stack([frame.data['vel1'], frame.data['vel2'], frame.data['vel3'],
-                                   frame.data['rho'], frame.data['press'] / frame.data['rho']])
+                                   frame.data['rho'], frame.data['press'] / frame.data['rho'],
+                                   frame.data['int_rho_dr']])
 
             for pid, (x1, x2, x3), flag in zip(pids, meshs, flags):
                 mb = mesh2mb(x1, x2, x3)
                 q = interpcc(quantities, mb, x1, x2, x3)
+                q[-1] = np.clip(q[-1], 0.0, None)
                 record[flag.decode()+str(pid)].append(np.concatenate([[time, x1, x2, x3], q]))
 
             frame.unload()

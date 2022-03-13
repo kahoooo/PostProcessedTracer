@@ -1,6 +1,6 @@
 import itertools as it
 from dataclasses import dataclass, field
-from typing import Tuple, Callable
+from typing import List, Tuple, Callable
 
 import numba as nb
 import numpy as np
@@ -446,7 +446,7 @@ def _integrate_x1(frame: Frame, quantity):
         grid_size: np.ndarray
         node_value: np.ndarray
         leaf_value: np.ndarray
-        leaf: list['PartialIntegralTree']
+        leaf: List['PartialIntegralTree']
 
         def __init__(self, level: int, lloc: np.ndarray, grid_size: np.ndarray):
             self.level = level
@@ -459,7 +459,7 @@ def _integrate_x1(frame: Frame, quantity):
         def add(self, level: int, lloc: np.ndarray, value: np.ndarray):
             self._add_helper(level, lloc, value)
 
-        def _add_helper(self, level: int, lloc: np.ndarray, value: np.ndarray) -> tuple:
+        def _add_helper(self, level: int, lloc: np.ndarray, value: np.ndarray) -> Tuple:
             if level == self.level:
                 self.node_value += value
                 return np.array(value), np.array([0, 0])
@@ -498,7 +498,7 @@ def _integrate_x1(frame: Frame, quantity):
 
             return result, jks, sz
 
-        def get_leaf(self, level: int, lloc: np.ndarray) -> tuple['PartialIntegralTree', np.ndarray]:
+        def get_leaf(self, level: int, lloc: np.ndarray) -> Tuple['PartialIntegralTree', np.ndarray]:
             lc = lloc >> (level - self.level - 1) & 1
             i = lc[0] + lc[1] * 2
             if self.leaf[i] is None:

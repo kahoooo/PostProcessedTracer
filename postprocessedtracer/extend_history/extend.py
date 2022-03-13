@@ -1,4 +1,4 @@
-from functools import cache
+from functools import lru_cache
 
 import numpy as np
 import scipy.optimize as so
@@ -66,7 +66,7 @@ class Extend:
         lamb_m_i_m_prime2 = sp.lambdify((r_i, m), pre_lambidify(d2mi_dri2))
         lamb_m_f_m_prime2 = sp.lambdify((r_f, m), pre_lambidify(d2mf_drf2))
 
-        @cache
+        @lru_cache(maxsize=None)
         def r_i_nsolve(m_):
             m_ = float(m_)
             return so.root_scalar(lamb_m_i_m,
@@ -74,7 +74,7 @@ class Extend:
                                   fprime2=lamb_m_i_m_prime2,
                                   args=(m_,), x0=1.0, method='halley').root
 
-        @cache
+        @lru_cache(maxsize=None)
         def r_f_nsolve(m_):
             m_ = float(m_)
             return so.root_scalar(lamb_m_f_m,

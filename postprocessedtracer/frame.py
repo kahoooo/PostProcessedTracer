@@ -94,7 +94,7 @@ class Frame:
     def derive_quantity(self, quantity):
         if quantity == 'int_rho_dr':
             self.data[quantity] = _integrate_x1(self, 'rho')
-            _fix_boundary(self, 'int_rho_dr', boundary_func=((_outflow_boundary, _zero_boundary),
+            _fix_boundary(self, 'int_rho_dr', boundary_func=((_outflow_boundary, _negative_reflect_boundary),
                                                              (_reflect_boundary, _reflect_boundary), (None, None)))
 
     def _load_header(self):
@@ -648,3 +648,7 @@ def _outflow_boundary(arr, ngh, jl, ju, kl, ku):
 
 def _reflect_boundary(arr, ngh, jl, ju, kl, ku):
     return arr[kl:ku, jl:ju, ngh:ngh+ngh][:, :, ::-1]
+
+
+def _negative_reflect_boundary(arr, ngh, jl, ju, kl, ku):
+    return -arr[kl:ku, jl:ju, ngh:ngh+ngh][:, :, ::-1]

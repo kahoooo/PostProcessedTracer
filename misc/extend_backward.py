@@ -25,10 +25,10 @@ def main():
     argsteps = args['steps']
 
     extend = Extend(
-        singular_isothermal_sphere(m_0=130.0, r_0=2.0503493309826641),
-        uniform_sphere(rho_0=7.4603879725194059e-03),
+        singular_isothermal_sphere(m_0=130.0 * 5 / 8, r_0=2.0503493309826641),
+        uniform_sphere(rho_0=7.855735488699885e-03),  # 7.4603879725194059e-03
         tanh_velocity(0.01),
-        dt=argtime, mmax=130.0, omega_i=31.553241, steps=argsteps)
+        dt=argtime, mmax=130.0 * 5 / 8, omega_i=31.553241 * 0.5, steps=argsteps)
 
     par_in = np.load(args['in'])
     par_out = dict()

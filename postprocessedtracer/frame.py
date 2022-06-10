@@ -422,6 +422,37 @@ class Frame:
 
         self.get_finite_volume = get_finite_volume
 
+    def patch_boundary(self, quantities):
+        lloc2mb = dict()
+        for mb, lloc in enumerate(self.header['LogicalLocations']):
+            lloc2mb[tuple(lloc)] = mb
+
+        def patch_one(data):
+            nx = self.header['MeshBlockSize']
+            ngh = self.num_ghost
+            ndim = self.num_dimension
+            xrngs = [(-1, (0, ngh)), (0, (ngh, nx[0] - ngh)), (1, (nx[0] - ngh, nx[0]))]
+            yrngs = [(-1, (0, ngh)), (0, (ngh, nx[1] - ngh)), (1, (nx[1] - ngh, nx[1]))] \
+                if ndim >= 2 else [(0, (0, nx[1]))]
+            zrngs = [(-1, (0, ngh)), (0, (ngh, nx[2] - ngh)), (1, (nx[2] - ngh, nx[2]))] \
+                if ndim >= 3 else [(0, (0, nx[2]))]
+            nx0 = nx[0] - 2 * ngh
+            nx1 = nx[1] - 2 * ngh if ndim >= 2 else nx[1]
+            nx2 = nx[2] - 2 * ngh if ndim >= 3 else nx[2]
+            for mymb, mylloc in enumerate(self.header['LogicalLocations']):
+                for z, (zs, ze) in zrngs:
+                    for y, (ys, ye) in yrngs:
+                        for x, (xs, xe) in xrngs:
+                            if x == y == z == 0:
+                                continue
+                            nblloc = mylloc + np.array([x, y, z])
+                            if tuple(nblloc) not in lloc2mb:
+                                continue
+                            nbmb = lloc2mb[tuple(nblloc)]
+                            data[mymb, zs:ze, ys:ye, xs:xe] = \
+                                data[nbmb, zs-z*nx2:ze-z*nx2, ys-y*nx1:ye-y*nx1, xs-x*nx0:xe-x*nx0]
+        for q in quantities:
+            patch_one(self.data[q])
 
 def _convert_type(x):
     if isinstance(x, np.integer):
@@ -558,9 +589,9 @@ def _fix_boundary(frame: Frame, quantity: str, boundary_func):
         for x, y, z in sorted(it.product(xls, yls, zls), key=lambda xyz_: sum(map(abs, xyz_))):
             if x == y == z == 0:
                 continue
-            myil, myiu = (0, il) if x == -1 else (iu, iu+ngh) if x == 1 else (il, iu)
-            myjl, myju = (0, jl) if y == -1 else (ju, ju+ngh) if y == 1 else (jl, ju)
-            mykl, myku = (0, kl) if z == -1 else (ku, ku+ngh) if z == 1 else (kl, ku)
+            myil, myiu = (0, il) if x == -1 else (iu, iu + ngh) if x == 1 else (il, iu)
+            myjl, myju = (0, jl) if y == -1 else (ju, ju + ngh) if y == 1 else (jl, ju)
+            mykl, myku = (0, kl) if z == -1 else (ku, ku + ngh) if z == 1 else (kl, ku)
             boundary = None
 
             # first, find if there is meshblock at same level
@@ -579,11 +610,11 @@ def _fix_boundary(frame: Frame, quantity: str, boundary_func):
             if boundary is None and (theirlevel, tuple(theirlloc)) in mbfinder:
                 theirmb = mbfinder[(theirlevel, tuple(theirlloc))]
                 theiril, theiriu = ((iu - (ngh >> 1), iu) if x == -1 else (ngh, ngh + (ngh >> 1)) if x == 1 else
-                                    (il + (nx1 >> 1), iu) if mylloc[0] & 1 else (il, iu - (nx1 >> 1)))
+                (il + (nx1 >> 1), iu) if mylloc[0] & 1 else (il, iu - (nx1 >> 1)))
                 theirjl, theirju = ((ju - (ngh >> 1), ju) if y == -1 else (ngh, ngh + (ngh >> 1)) if y == 1 else
-                                    (jl + (nx2 >> 1), ju) if mylloc[1] & 1 else (jl, ju - (nx2 >> 1)))
+                (jl + (nx2 >> 1), ju) if mylloc[1] & 1 else (jl, ju - (nx2 >> 1)))
                 theirkl, theirku = ((ku - (ngh >> 1), ku) if z == -1 else (ngh, ngh + (ngh >> 1)) if z == 1 else
-                                    (kl + (nx3 >> 1), ku) if mylloc[2] & 1 else (kl, ku - (nx3 >> 1)))
+                (kl + (nx3 >> 1), ku) if mylloc[2] & 1 else (kl, ku - (nx3 >> 1)))
                 boundary = np.repeat(np.repeat(np.repeat(
                     arr[theirmb, theirkl:theirku, theirjl:theirju, theiril:theiriu], 2, axis=0), 2, axis=1), 2, axis=3)
 
@@ -622,7 +653,7 @@ def _fix_boundary(frame: Frame, quantity: str, boundary_func):
                     if d != 0:
                         func = boundary_func[i][(d + 1) // 2]
                         arr_ = arr[mymb]
-                        arr_ = np.moveaxis(arr_, 2-i, 2)
+                        arr_ = np.moveaxis(arr_, 2 - i, 2)
                         if d == 1:
                             arr_ = np.flip(arr_, 2)
                         jl_, ju_ = (myjl, myju) if i == 0 else (myil, myiu)
@@ -630,7 +661,7 @@ def _fix_boundary(frame: Frame, quantity: str, boundary_func):
                         boundary = func(arr_, ngh, jl_, ju_, kl_, ku_)
                         if d == 1:
                             boundary = np.flip(boundary, 2)
-                        boundary = np.moveaxis(boundary, 2, 2-i)
+                        boundary = np.moveaxis(boundary, 2, 2 - i)
                         break
                 else:
                     boundary = np.full((myku - mykl, myju - myjl, myiu - myil), np.nan)
@@ -643,12 +674,12 @@ def _zero_boundary(arr, ngh, jl, ju, kl, ku):
 
 
 def _outflow_boundary(arr, ngh, jl, ju, kl, ku):
-    return np.repeat(arr[kl:ku, jl:ju, ngh:ngh+1], ngh, axis=2)
+    return np.repeat(arr[kl:ku, jl:ju, ngh:ngh + 1], ngh, axis=2)
 
 
 def _reflect_boundary(arr, ngh, jl, ju, kl, ku):
-    return arr[kl:ku, jl:ju, ngh:ngh+ngh][:, :, ::-1]
+    return arr[kl:ku, jl:ju, ngh:ngh + ngh][:, :, ::-1]
 
 
 def _negative_reflect_boundary(arr, ngh, jl, ju, kl, ku):
-    return -arr[kl:ku, jl:ju, ngh:ngh+ngh][:, :, ::-1]
+    return -arr[kl:ku, jl:ju, ngh:ngh + ngh][:, :, ::-1]

@@ -58,6 +58,7 @@ def main():
             flags = par['flags']
 
             frame.load(['rho', 'vel1', 'vel2', 'vel3', 'press', 'int_rho_dr'])
+            frame.patch_boundary(['press'])
 
             quantities = np.stack([frame.data['vel1'], frame.data['vel2'], frame.data['vel3'],
                                    frame.data['rho'], frame.data['press'] / frame.data['rho'],

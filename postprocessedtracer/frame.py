@@ -453,6 +453,8 @@ class Frame:
                                 data[nbmb, zs-z*nx2:ze-z*nx2, ys-y*nx1:ye-y*nx1, xs-x*nx0:xe-x*nx0]
         for q in quantities:
             patch_one(self.data[q])
+            _fix_boundary(self, q, boundary_func=((_outflow_boundary, _outflow_boundary),
+                                                  (_reflect_boundary, _reflect_boundary), (None, None)))
 
 def _convert_type(x):
     if isinstance(x, np.integer):

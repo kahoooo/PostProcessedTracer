@@ -43,6 +43,7 @@ class Extend:
         m_i = sympy_func_m_i(r_i)
         m_f = sympy_func_m_f(r_f)
         r = sympy_func_r(t, dt, r_i, r_f)
+        print(sp.latex(r))
 
         # first derivatives
         vr = r.diff(t)
@@ -51,6 +52,7 @@ class Extend:
         dm_dr = 1 / r.diff(m).subs({r_i.diff(m): 1 / dmi_dri, r_f.diff(m): 1 / dmf_drf})
         # dri_drf = dmf_drf / dmi_dri
         # drf_dri = dmi_dri / dmf_drf
+        print(sp.latex(vr))
 
         # second derivatives
         d2mi_dri2 = dmi_dri.diff(r_i)
@@ -96,6 +98,7 @@ class Extend:
         rho = dm_dr / (4 * sp.pi * r ** 2)
         lamb_rho = sp.lambdify((t, m), pre_lambidify(rho),
                                [{'r_i': r_i_nsolve, 'r_f': r_f_nsolve}, 'numpy', 'scipy'])
+        print(sp.latex(rho))
 
         moi_integrand = (2 / 3 * rho * 4 * sp.pi * r ** 4 / dm_dr).subs({r_i: r_i_impl, r_f: r_f_impl})
         moi = nintegrate(moi_integrand.expand(), (m, 0, mmax))

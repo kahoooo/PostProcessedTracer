@@ -20,7 +20,7 @@ def plot_particles(par: Particles, zorder=2):
     x = par.meshs[:, 0] * np.sin(par.meshs[:, 1])
     y = par.meshs[:, 0] * np.cos(par.meshs[:, 1])
     plt.scatter(x, y, s=1, zorder=zorder)
-    plt.scatter(x, -y, s=1, zorder=zorder)
+    # plt.scatter(x, -y, s=1, zorder=zorder)
 
 
 def plot_background(frame: Frame):
@@ -38,8 +38,8 @@ def plot_background(frame: Frame):
     for mb in range(frame.header['NumMeshBlocks']):
         plt.pcolormesh(xf[mb, 2:-2, 2:-2], yf[mb, 2:-2, 2:-2], frame.data['rho'][mb, 0, 2:-2, 2:-2].T,
                        norm=colors.LogNorm(vmin=rho_vmin, vmax=rho_vmax), zorder=0, cmap='jet')
-        plt.pcolormesh(xf[mb, 2:-2, 2:-2], -yf[mb, 2:-2, 2:-2], frame.data['vel1'][mb, 0, 2:-2, 2:-2].T,
-                       norm=colors.Normalize(vmin=vel1_vmin, vmax=vel1_vmax), zorder=0, cmap='bwr')
+        # plt.pcolormesh(xf[mb, 2:-2, 2:-2], -yf[mb, 2:-2, 2:-2], frame.data['vel1'][mb, 0, 2:-2, 2:-2].T,
+        #                norm=colors.Normalize(vmin=vel1_vmin, vmax=vel1_vmax), zorder=0, cmap='bwr')
     plt.gca().set_aspect(1)
 
 
@@ -59,6 +59,18 @@ def main():
                         help='minimum particle distance in mass-space')
     parser.add_argument('--sample_space', action='store', type=float, default=0,
                         help='minimum particle distance')
+    parser.add_argument('--ix1', action='store', type=str, default='outflow',
+                        help='x1 inner boundary')
+    parser.add_argument('--ox1', action='store', type=str, default='outflow',
+                        help='x1 outer boundary')
+    parser.add_argument('--ix2', action='store', type=str, default='polar',
+                        help='x2 inner boundary')
+    parser.add_argument('--ox2', action='store', type=str, default='reflecting',
+                        help='x2 outer boundary')
+    parser.add_argument('--ix3', action='store', type=str, default='periodic',
+                        help='x3 inner boundary')
+    parser.add_argument('--ox3', action='store', type=str, default='periodic',
+                        help='x3 outer boundary')
     parser.add_argument('--seed', '-s', action='store', type=int,
                         help='seed for random number generation')
     parser.add_argument('--ncols', action='store', type=int,
@@ -71,9 +83,9 @@ def main():
         frames = []
         for filename in t:
             t.set_description_str(f'Reading header from {filename}')
-            frames.append(Frame(filename, boundaries=(('none', 'none'),
-                                                      ('polar', 'reflecting'),
-                                                      ('periodic', 'periodic'))))
+            frames.append(Frame(filename, boundaries=((args.ix1, args.ox1),
+                                                      (args.ix2, args.ox2),
+                                                      (args.ix3, args.ox3)), num_ghost=2))
         frames.sort(reverse=args.backward)
 
     # seed both numpy and numba with the same seed

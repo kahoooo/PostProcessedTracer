@@ -1,4 +1,5 @@
 import itertools as it
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Tuple, Callable
 
@@ -16,6 +17,7 @@ class Frame:
     num_ghost: int = field(compare=False, repr=False)
     num_dimension: int = field(compare=False, repr=False)
     boundaries: Tuple[Tuple[str, str], Tuple[str, str], Tuple[str, str]] = field(compare=False, repr=False)
+    boundary_str2func: dict = field(compare=False, repr=False)
 
     mesh_position_to_fractional_position_root: Callable = field(compare=False, repr=False)
     mesh_position_to_fractional_position_meshblock: Callable = field(compare=False, repr=False)
@@ -28,7 +30,7 @@ class Frame:
     apply_boundaries: Callable = field(compare=False, repr=False)
     get_finite_volume: Callable = field(compare=False, repr=False)
 
-    def __init__(self, filename, boundaries=None):
+    def __init__(self, filename, boundaries=None, num_ghost=None):
         self.filename = filename
 
         if boundaries is None:
@@ -44,9 +46,30 @@ class Frame:
         self.time = self.header['Time']
         self.data = {}
 
+        self._set_ghostzone(num_ghost)
+
         self.derived_requirements = {
             'int_rho_dr': ['rho']
         }
+
+        self.boundary_str2func = defaultdict(lambda: {
+            'none': defaultdict(lambda: None),
+            'outflow': defaultdict(lambda: _outflow_boundary),
+            'reflecting': defaultdict(lambda: _reflect_boundary),
+            'periodic': defaultdict(lambda: None),
+            'polar': defaultdict(lambda: _reflect_boundary),
+        })
+
+        self.boundary_str2func['vel1']['reflecting']['ix1'] = _negative_reflect_boundary
+        self.boundary_str2func['vel1']['reflecting']['ox1'] = _negative_reflect_boundary
+        self.boundary_str2func['vel2']['reflecting']['ix2'] = _negative_reflect_boundary
+        self.boundary_str2func['vel2']['reflecting']['ox2'] = _negative_reflect_boundary
+        self.boundary_str2func['vel3']['reflecting']['ix3'] = _negative_reflect_boundary
+        self.boundary_str2func['vel3']['reflecting']['ox3'] = _negative_reflect_boundary
+        self.boundary_str2func['vel2']['polar']['ix2'] = _negative_reflect_boundary
+        self.boundary_str2func['vel2']['polar']['ox2'] = _negative_reflect_boundary
+        self.boundary_str2func['vel3']['polar']['ix2'] = _negative_reflect_boundary
+        self.boundary_str2func['vel3']['polar']['ox2'] = _negative_reflect_boundary
 
         self._prepare_functions()
 
@@ -79,6 +102,24 @@ class Frame:
                     dataset_index = np.searchsorted(dataset_prefix, variable_index)
                     variable_index -= dataset_offsets[dataset_index]
                     self.data[q] = _convert_type(f[dataset_names[dataset_index]][variable_index])
+                    if self.num_ghost < self.num_ghost_data:
+                        # simply crop the data
+                        diff = self.num_ghost_data - self.num_ghost
+                        slc = tuple(slice(None) if i == 0 or n == 1 else slice(diff, n - diff) for i, n in enumerate(self.data[q].shape))
+                        self.data[q] = self.data[q][slc]
+                    elif self.num_ghost > self.num_ghost_data:
+                        # pad and fix boundary
+                        diff = self.num_ghost - self.num_ghost_data
+                        pad = tuple((0, 0) if i == 0 or n == 1 else (diff, diff) for i, n in enumerate(self.data[q].shape))
+                        self.data[q] = np.pad(self.data[q], pad)
+                    (ix1, ox1), (ix2, ox2), (ix3, ox3) = self.boundaries
+                    ix1 = self.boundary_str2func[q][ix1]['ix1']
+                    ox1 = self.boundary_str2func[q][ox1]['ox1']
+                    ix2 = self.boundary_str2func[q][ix2]['ix2']
+                    ox2 = self.boundary_str2func[q][ox2]['ox2']
+                    ix3 = self.boundary_str2func[q][ix3]['ix3']
+                    ox3 = self.boundary_str2func[q][ox3]['ox3']
+                    _fix_boundary(self, q, boundary_func=((ix1, ox1), (ix2, ox2), (ix3, ox3)))
                 elif q in self.derived_requirements:
                     quantities.extend(self.derived_requirements[q])
                     derived_quantities.append(q)
@@ -94,6 +135,7 @@ class Frame:
     def derive_quantity(self, quantity):
         if quantity == 'int_rho_dr':
             self.data[quantity] = _integrate_x1(self, 'rho')
+            # self.patch_boundary(['int_rho_dr'])
             _fix_boundary(self, 'int_rho_dr', boundary_func=((_outflow_boundary, _negative_reflect_boundary),
                                                              (_reflect_boundary, _reflect_boundary), (None, None)))
 
@@ -111,6 +153,72 @@ class Frame:
                 if key in dataset_names:
                     continue
                 self.header[key] = _convert_type(f[key][:])
+
+    def _set_ghostzone(self, num_ghost):
+        # detect the number of ghost zone, assume the first meshblock has the logical location (0, 0, 0)
+        x1v = self.header['x1v']
+        x1minrt, x1maxrt, x1ratrt = self.header['RootGridX1']
+        self.num_ghost_data = num_ghost_data = np.searchsorted(x1v[0], x1minrt)
+        if num_ghost is None:
+            self.num_ghost = num_ghost = self.num_ghost_data
+        else:
+            self.num_ghost = num_ghost
+
+        if num_ghost == num_ghost_data:
+            # no action needed
+            return
+
+        if num_ghost < num_ghost_data:
+            # simply crop the data
+            diff = num_ghost_data - num_ghost
+            for i in range(1, 4):
+                if self.header['MeshBlockSize'][i-1] == 1:
+                    continue
+                self.header['MeshBlockSize'][i-1] -= diff * 2
+                for vf in 'vf':
+                    xi = f'x{i}{vf}'
+                    self.header[xi] = self.header[xi][:, diff:-diff]
+            return
+
+        # extend all data
+        # tricky part: extending cell centers is not trivial
+        # try xv[i] == (a-1)/a * ((xf[i+1]**a - xf[i]**a) / (xf[i+1]**(a-1) - xf[i]**(a-1)))
+        # with a = 2, 3, 4 (cartesian, cylindrical, spherical polar)
+        # also try ((sin(xf[i+1]) - xf[i+1] cos(xf[i+1])) - (sin(xf[i]) - xf[i] cos(xf[i])))/(cos(xf[i]) - cos(xf[i+1]))
+        diff = num_ghost - num_ghost_data
+        for i in range(1, 4):
+            if self.header['MeshBlockSize'][i-1] == 1:
+                continue
+            self.header['MeshBlockSize'][i-1] += diff * 2
+            for vf in 'vf':
+                xi = f'x{i}{vf}'
+                self.header[xi] = np.pad(self.header[xi], ((0, 0), (diff, diff)))
+            xif = self.header[f'x{i}f']
+            xiv = self.header[f'x{i}v']
+            for a in range(2, 5):
+                if np.isclose((a-1)/a * ((xif[0, diff+1]**a - xif[0, diff]**a)/(xif[0, diff+1]**(a-1) - xif[0, diff]**(a-1))), xiv[0, diff], rtol=1e-15):
+                    break
+            else:
+                if np.isclose(((np.sin(xif[0, diff+1]) - xif[0, diff+1] * np.cos(xif[0, diff+1])) - (np.sin(xif[0, diff]) - xif[0, diff] * np.cos(xif[0, diff])))
+                              / (np.cos(xif[0, diff]) - np.cos(xif[0, diff+1])), xiv[0, diff], rtol=1e-15):
+                    a = 0
+                else:
+                    raise RuntimeError(f'Can\'t extend cell centers in the x{i}-direction')
+            levels = self.header['Levels']
+            rat = self.header[f'RootGridX{i}'][2]**(1 / (1 << levels))
+            for j in range(diff, 0, -1):
+                xif[:, j-1] = xif[:, j] - (xif[:, j+1] - xif[:, j]) / rat
+                if a > 0:
+                    xiv[:, j-1] = (a-1)/a * ((xif[:, j]**a - xif[:, j-1]**a)/(xif[:, j]**(a-1) - xif[:, j-1]**(a-1)))
+                else:
+                    xiv[:, j-1] = ((np.sin(xif[:, j]) - xif[:, j] * np.cos(xif[:, j])) - (np.sin(xif[:, j-1]) - xif[:, j-1] * np.cos(xif[:, j-1]))
+                                   / (np.cos(xif[:, j-1]) - np.cos(xif[:, j])))
+                xif[:, -j] = xif[:, -j-1] + (xif[:, -j-1] - xif[:, -j-2]) * rat
+                if a > 0:
+                    xiv[:, -j] = (a-1)/a * ((xif[:, -j]**a - xif[:, -j-1]**a)/(xif[:, -j]**(a-1) - xif[:, -j-1]**(a-1)))
+                else:
+                    xiv[:, -j] = ((np.sin(xif[:, -j]) - xif[:, -j] * np.cos(xif[:, -j])) - (np.sin(xif[:, -j-1]) - xif[:, -j-1] * np.cos(xif[:, -j-1]))
+                                  / (np.cos(xif[:, -j-1]) - np.cos(xif[:, -j])))
 
     def _prepare_functions(self):
         nx_root = self.header['RootGridSize']
@@ -144,11 +252,8 @@ class Frame:
 
         (ix1, ox1), (ix2, ox2), (ix3, ox3) = self.boundaries
 
-        # detect the number of ghost zone, assume the first meshblock has the logical location (0, 0, 0)
-        ngh = np.searchsorted(x1v[0], x1minrt)
-        self.num_ghost = ngh
-
         # calculate the numbers of finest meshblock needed
+        ngh = self.num_ghost
         nmb = [nx_root[d] // (nx_meshblock[d] - 2 * ngh) << maxlevel if nx_root[d] > 1 else 1 for d in range(3)]
 
         # assign meshblock ids to table
@@ -372,8 +477,8 @@ class Frame:
                 elif ox2 == 'periodic':
                     x2_ = x2_ - (x2maxrt - x2minrt)
                 elif ox2 == 'polar':
-                    if x2maxrt != np.pi:
-                        raise RuntimeError('ox2 = polar but x2max = ' + str(x2maxrt) + ' != pi')
+                    # if x2maxrt != np.pi:
+                    #     raise RuntimeError('ox2 = polar but x2max = ' + str(x2maxrt) + ' != pi')
                     x2_ = x2maxrt - x2_
                     dx3_ = np.pi % (x3maxrt - x3minrt)
                     x3_ = x3_ + dx3_
@@ -453,8 +558,6 @@ class Frame:
                                 data[nbmb, zs-z*nx2:ze-z*nx2, ys-y*nx1:ye-y*nx1, xs-x*nx0:xe-x*nx0]
         for q in quantities:
             patch_one(self.data[q])
-            _fix_boundary(self, q, boundary_func=((_outflow_boundary, _outflow_boundary),
-                                                  (_reflect_boundary, _reflect_boundary), (None, None)))
 
 def _convert_type(x):
     if isinstance(x, np.integer):
@@ -654,6 +757,8 @@ def _fix_boundary(frame: Frame, quantity: str, boundary_func):
                     d = -1 if idx < 0 else 1 if idx >= sz else 0
                     if d != 0:
                         func = boundary_func[i][(d + 1) // 2]
+                        if func is None:
+                            continue
                         arr_ = arr[mymb]
                         arr_ = np.moveaxis(arr_, 2 - i, 2)
                         if d == 1:

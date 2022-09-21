@@ -17,6 +17,18 @@ def main():
                         help='output in npy format and set the filename format (with one format specifier)')
     parser.add_argument('-z', '--npz', action='store', type=str, default='particles.npz',
                         help='output in npz format and set the filename')
+    parser.add_argument('--ix1', action='store', type=str, default='outflow',
+                        help='x1 inner boundary')
+    parser.add_argument('--ox1', action='store', type=str, default='outflow',
+                        help='x1 outer boundary')
+    parser.add_argument('--ix2', action='store', type=str, default='polar',
+                        help='x2 inner boundary')
+    parser.add_argument('--ox2', action='store', type=str, default='reflecting',
+                        help='x2 outer boundary')
+    parser.add_argument('--ix3', action='store', type=str, default='periodic',
+                        help='x3 inner boundary')
+    parser.add_argument('--ox3', action='store', type=str, default='periodic',
+                        help='x3 outer boundary')
     parser.add_argument('--ncols', action='store', type=int,
                         help='number of columns used to print progress bar')
     args = parser.parse_args()
@@ -27,7 +39,9 @@ def main():
         frames = []
         for filename in t:
             t.set_description_str(f'Reading header from {filename}')
-            frames.append(Frame(filename))
+            frames.append(Frame(filename, boundaries=((args.ix1, args.ox1),
+                                                      (args.ix2, args.ox2),
+                                                      (args.ix3, args.ox3)), num_ghost=2))
     frames.sort()
 
     mesh2mb_cache = dict()
@@ -58,7 +72,7 @@ def main():
             flags = par['flags']
 
             frame.load(['rho', 'vel1', 'vel2', 'vel3', 'press', 'int_rho_dr'])
-            frame.patch_boundary(['press'])
+            # frame.patch_boundary(['press'])
 
             quantities = np.stack([frame.data['vel1'], frame.data['vel2'], frame.data['vel3'],
                                    frame.data['rho'], frame.data['press'] / frame.data['rho'],
